@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 
 	"back_ai_gun_data/model"
@@ -28,6 +27,23 @@ func GetConfigFromEnv() ConsumerConfig {
 		QueueName:   getEnv("QUEUE_NAME", "etl-entity-data"),
 		Prefetch:    getEnvAsInt("PREFETCH", 10),
 	}
+}
+
+// 启动主消费者
+func StartMainConsumer(ctx context.Context) {
+	config := GetConfigFromEnv()
+
+	c, err := NewConsumer(config)
+	if err != nil {
+		lr.E().Fatalf("Failed to create consumer: %v", err)
+	}
+	defer c.Close()
+
+	go func() {
+		if err := c.Start(ctx); err != nil {
+			lr.E().Errorf("Consumer error: %v", err)
+		}
+	}()
 }
 
 // 消费者实例
@@ -95,6 +111,25 @@ func (c *Consumer) Start(ctx context.Context) error {
 	}
 }
 
+// 确保队列存在
+func (c *Consumer) ensureQueueExists() error {
+	// 声明队列，如果不存在则创建
+	_, err := c.channel.QueueDeclare(
+		c.config.QueueName, // name
+		true,               // durable (持久化)
+		false,              // delete when unused
+		false,              // exclusive
+		false,              // no-wait
+		nil,                // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("failed to declare queue: %w", err)
+	}
+
+	lr.I().Infof("Queue '%s' is ready", c.config.QueueName)
+	return nil
+}
+
 // 处理消息
 func (c *Consumer) handleMessage(msg amqp.Delivery) {
 	defer func() {
@@ -123,25 +158,6 @@ func (c *Consumer) handleMessage(msg amqp.Delivery) {
 	// 确认消息
 	msg.Ack(false)
 	lr.I().Infof("Message processed successfully: %s", messageData.ID)
-}
-
-// 确保队列存在
-func (c *Consumer) ensureQueueExists() error {
-	// 声明队列，如果不存在则创建
-	_, err := c.channel.QueueDeclare(
-		c.config.QueueName, // name
-		true,               // durable (持久化)
-		false,              // delete when unused
-		false,              // exclusive
-		false,              // no-wait
-		nil,                // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("failed to declare queue: %w", err)
-	}
-
-	log.Printf("Queue '%s' is ready", c.config.QueueName)
-	return nil
 }
 
 // 关闭消费者
