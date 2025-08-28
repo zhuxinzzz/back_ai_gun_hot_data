@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	github.com/go-resty/resty/v2 v2.16.5
+	github.com/json-iterator/go v1.1.12
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/redis/go-redis/v9 v9.12.1
 	github.com/sirupsen/logrus v1.9.3
@@ -14,6 +15,8 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect

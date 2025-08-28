@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
 func PrintStartInfo(coinCount int) {
@@ -32,4 +34,9 @@ func GetFuncName() string {
 // NormalizeName 标准化名称（小写去空格）
 func NormalizeName(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, " ", ""))
+}
+
+func ToJson(v any) string {
+	b, _ := jsoniter.MarshalIndent(v, "", "  ")
+	return "\n" + string(b)
 }

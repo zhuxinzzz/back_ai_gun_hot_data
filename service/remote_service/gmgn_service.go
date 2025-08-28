@@ -1,6 +1,7 @@
 package remote_service
 
 import (
+	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model/remote"
 	"context"
 	"fmt"
@@ -31,7 +32,7 @@ func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams)
 		queryParams.Set("fuzzy", strconv.Itoa(params.Fuzzy))
 	}
 
-	apiURL := GetHost() + "/api/v1/tokens/query"
+	apiURL := GetHost() + "/api/v1/tokens"
 	if len(queryParams) > 0 {
 		apiURL += "?" + queryParams.Encode()
 	}
@@ -43,6 +44,7 @@ func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams)
 		Get(apiURL)
 
 	if err != nil {
+		lr.E().Error("QueryTokens failed: ", err)
 		return nil, fmt.Errorf("query tokens failed: %w", err)
 	}
 
@@ -70,6 +72,7 @@ func QueryTokensByName(name string, chain string) ([]remote.TokenInfo, error) {
 
 	resp, err := QueryTokens(params)
 	if err != nil {
+		lr.E().Error("QueryTokensByName failed: ", err)
 		return nil, err
 	}
 
@@ -93,6 +96,7 @@ func QueryTokensByAddress(address string, chain string) ([]remote.TokenInfo, err
 
 	resp, err := QueryTokens(params)
 	if err != nil {
+		lr.E().Error("QueryTokensByAddress failed: ", err)
 		return nil, err
 	}
 
