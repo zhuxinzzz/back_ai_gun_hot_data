@@ -1,12 +1,12 @@
 package consumer
 
 import (
+	"back_ai_gun_data/pkg/model"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 
-	"back_ai_gun_data/model"
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/service"
 
