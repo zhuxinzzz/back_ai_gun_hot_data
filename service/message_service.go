@@ -1,11 +1,13 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"back_ai_gun_data/model"
+	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
 )
 
@@ -130,6 +132,16 @@ func storeMessageData(data *model.MessageData, tweetInfo map[string]interface{},
 	jsonData, err := json.MarshalIndent(storageData, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal storage data: %w", err)
+	}
+
+	// 使用缓存存储数据
+	ctx := context.Background()
+	cacheKey := fmt.Sprintf("message:%s", data.ID)
+
+	// 存储到Redis缓存，过期时间30分钟
+	if err := cache.Set(ctx, cacheKey, string(jsonData), 30*time.Minute); err != nil {
+		lr.E().Errorf("Failed to cache message data: %v", err)
+		// 缓存失败不影响主流程，只记录错误
 	}
 
 	lr.I().Infof("Stored data for message %s:\n%s", data.ID, string(jsonData))

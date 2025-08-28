@@ -7,11 +7,17 @@ import (
 	"syscall"
 
 	"back_ai_gun_data/consumer"
+	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
 )
 
 func main() {
+	// 初始化logger
 	lr.Init()
+
+	// 初始化缓存
+	redisConfig := cache.GetRedisConfigFromEnv()
+	cache.Init(redisConfig)
 
 	config := consumer.GetConfigFromEnv()
 
