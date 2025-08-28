@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/google/uuid"
+
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -39,4 +41,12 @@ func NormalizeName(name string) string {
 func ToJson(v any) string {
 	b, _ := jsoniter.MarshalIndent(v, "", "  ")
 	return "\n" + string(b)
+}
+func GenerateUUIDV7() string {
+	id, err := uuid.NewV7()
+	if err != nil {
+		// 如果v7生成失败，回退到v4
+		return uuid.New().String()
+	}
+	return id.String()
 }

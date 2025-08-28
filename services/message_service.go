@@ -1,4 +1,4 @@
-package service
+package services
 
 import (
 	"back_ai_gun_data/pkg/model"
@@ -15,6 +15,8 @@ func ProcessMessageData(data *model.MessageData) error {
 	if err := validateMessage(data); err != nil {
 		return fmt.Errorf("message validation failed: %w", err)
 	}
+
+	//data.Data.EntitiesExtract.Entities.Tokens
 
 	lr.I().Infof("Processing message: %s, tweet: %s", data.ID, data.Data.TweetID)
 

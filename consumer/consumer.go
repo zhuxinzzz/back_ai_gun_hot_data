@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"back_ai_gun_data/pkg/lr"
-	"back_ai_gun_data/service"
+	"back_ai_gun_data/services"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -83,7 +83,7 @@ func handleMsg(msg amqp.Delivery) {
 		return
 	}
 
-	if err := service.ProcessMessageData(&messageData); err != nil {
+	if err := services.ProcessMessageData(&messageData); err != nil {
 		lr.E().Errorf("Failed to process message: %v", err)
 		msg.Nack(false, true) // 重新入队
 		return

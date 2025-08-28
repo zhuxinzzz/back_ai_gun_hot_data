@@ -32,7 +32,7 @@ func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams)
 		queryParams.Set("fuzzy", strconv.Itoa(params.Fuzzy))
 	}
 
-	apiURL := GetHost() + "/api/v1/tokens"
+	apiURL := GetHost() + "/api/v1/ai/tokens"
 	if len(queryParams) > 0 {
 		apiURL += "?" + queryParams.Encode()
 	}
