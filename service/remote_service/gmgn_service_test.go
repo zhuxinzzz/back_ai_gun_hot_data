@@ -7,8 +7,8 @@ import (
 )
 
 func TestQueryTokensByName(t *testing.T) {
-	name := ""
-	chain := ""
+	name := "HOKK"
+	chain := "Ethereum"
 
 	res, err := QueryTokensByName(name, chain)
 	assert.NoError(t, err)

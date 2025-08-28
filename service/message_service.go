@@ -11,7 +11,6 @@ import (
 	"back_ai_gun_data/pkg/lr"
 )
 
-// 处理消息数据 - 主业务函数
 func ProcessMessageData(data *model.MessageData) error {
 	// 验证消息数据
 	if err := validateMessage(data); err != nil {
