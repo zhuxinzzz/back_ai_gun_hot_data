@@ -8,8 +8,8 @@ import (
 // 从环境变量获取Redis配置
 func GetRedisConfigFromEnv() RedisConfig {
 	return RedisConfig{
-		Addr:        getEnv("REDIS_ADDR", "localhost:6379"),
-		Password:    getEnv("REDIS_PASSWORD", ""),
+		Addr:        getEnv("REDIS_ADDR", "hsy:16379"),
+		Password:    getEnv("REDIS_PASSWORD", "redisInstance1!"),
 		DB:          getEnvAsInt("REDIS_DB", 0),
 		ClusterMode: getEnvAsBool("REDIS_CLUSTER_MODE", false),
 		PoolSize:    getEnvAsInt("REDIS_POOL_SIZE", 10),
