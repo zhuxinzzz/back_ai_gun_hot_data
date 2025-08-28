@@ -8,7 +8,8 @@ import (
 )
 
 func GetHost() string {
-	return "https://api.aigun.dev"
+	//return "https://api.aigun.dev"
+	return "http://192.168.2.18:12345/"
 }
 
 // 扁平化HTTP客户端 - 直接使用，不包装

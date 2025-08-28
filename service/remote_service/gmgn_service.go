@@ -37,7 +37,7 @@ func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams)
 	}
 
 	// 发送请求
-	resp, err := httpClient.R().
+	resp, err := GetCli().R().
 		SetContext(ctx).
 		SetResult(&remote.TokenQueryResponse{}).
 		Get(apiURL)
