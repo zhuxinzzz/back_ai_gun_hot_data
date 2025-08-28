@@ -63,6 +63,11 @@ func NewConsumer(config ConsumerConfig) (*Consumer, error) {
 
 // 启动消费者
 func (c *Consumer) Start(ctx context.Context) error {
+	// 确保队列存在
+	if err := c.ensureQueueExists(); err != nil {
+		return fmt.Errorf("failed to ensure queue exists: %w", err)
+	}
+
 	msgs, err := c.channel.Consume(
 		c.config.QueueName,
 		"",    // consumer
@@ -117,6 +122,25 @@ func (c *Consumer) handleMessage(msg amqp.Delivery) {
 	// 确认消息
 	msg.Ack(false)
 	log.Printf("Message processed successfully: %s", messageData.ID)
+}
+
+// 确保队列存在
+func (c *Consumer) ensureQueueExists() error {
+	// 声明队列，如果不存在则创建
+	_, err := c.channel.QueueDeclare(
+		c.config.QueueName, // name
+		true,               // durable (持久化)
+		false,              // delete when unused
+		false,              // exclusive
+		false,              // no-wait
+		nil,                // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("failed to declare queue: %w", err)
+	}
+
+	log.Printf("Queue '%s' is ready", c.config.QueueName)
+	return nil
 }
 
 // 关闭消费者
