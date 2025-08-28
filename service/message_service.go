@@ -12,32 +12,25 @@ import (
 )
 
 func ProcessMessageData(data *model.MessageData) error {
-	// 验证消息数据
 	if err := validateMessage(data); err != nil {
 		return fmt.Errorf("message validation failed: %w", err)
 	}
 
-	// 记录处理开始
 	lr.I().Infof("Processing message: %s, tweet: %s", data.ID, data.Data.TweetID)
 
-	// 提取关键信息
 	tweetInfo := extractTweetInfo(data)
 
-	// 分析实体
 	entities := analyzeEntities(data)
 
-	// 存储数据
 	if err := storeMessageData(data, tweetInfo, entities); err != nil {
 		return fmt.Errorf("failed to store message data: %w", err)
 	}
 
-	// 记录处理完成
 	lr.I().Infof("Message processed successfully: %s", data.ID)
 
 	return nil
 }
 
-// 验证消息数据
 func validateMessage(data *model.MessageData) error {
 	if data == nil {
 		return fmt.Errorf("message data is nil")
@@ -58,7 +51,6 @@ func validateMessage(data *model.MessageData) error {
 	return nil
 }
 
-// 提取推文信息
 func extractTweetInfo(data *model.MessageData) map[string]interface{} {
 	info := map[string]interface{}{
 		"tweet_id":      data.Data.TweetID,
@@ -70,7 +62,6 @@ func extractTweetInfo(data *model.MessageData) map[string]interface{} {
 		"analyzed_time": time.Unix(data.Data.AnalyzedTime/1000, 0).Format(time.RFC3339),
 	}
 
-	// 添加发送者信息
 	if data.Data.SenderInfo.ScreenName != "" {
 		info["sender"] = map[string]interface{}{
 			"screen_name":     data.Data.SenderInfo.ScreenName,

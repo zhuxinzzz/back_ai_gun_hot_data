@@ -76,8 +76,6 @@ func handleMsg(msg amqp.Delivery) {
 		}
 	}()
 
-	lr.I().Infof("Received message: %s", msg.MessageId)
-
 	var messageData model.MessageData
 	if err := json.Unmarshal(msg.Body, &messageData); err != nil {
 		lr.E().Errorf("Failed to unmarshal message: %v", err)
@@ -85,19 +83,15 @@ func handleMsg(msg amqp.Delivery) {
 		return
 	}
 
-	// 调用独立的业务处理函数
 	if err := service.ProcessMessageData(&messageData); err != nil {
 		lr.E().Errorf("Failed to process message: %v", err)
 		msg.Nack(false, true) // 重新入队
 		return
 	}
 
-	// 确认消息
 	msg.Ack(false)
-	lr.I().Infof("Message processed successfully: %s", messageData.ID)
 }
 
-// 工具函数：获取环境变量，提供默认值
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -105,7 +99,6 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// 工具函数：获取环境变量并转换为整数
 func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := fmt.Sscanf(value, "%d", &defaultValue); err == nil && intValue == 1 {
