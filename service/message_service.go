@@ -3,10 +3,10 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"back_ai_gun_data/model"
+	"back_ai_gun_data/pkg/lr"
 )
 
 // 处理消息数据 - 主业务函数
@@ -17,7 +17,7 @@ func ProcessMessageData(data *model.MessageData) error {
 	}
 
 	// 记录处理开始
-	log.Printf("Processing message: %s, tweet: %s", data.ID, data.Data.TweetID)
+	lr.I().Infof("Processing message: %s, tweet: %s", data.ID, data.Data.TweetID)
 
 	// 提取关键信息
 	tweetInfo := extractTweetInfo(data)
@@ -31,7 +31,7 @@ func ProcessMessageData(data *model.MessageData) error {
 	}
 
 	// 记录处理完成
-	log.Printf("Message processed successfully: %s", data.ID)
+	lr.I().Infof("Message processed successfully: %s", data.ID)
 
 	return nil
 }
@@ -98,15 +98,15 @@ func analyzeEntities(data *model.MessageData) map[string]interface{} {
 
 	// 记录实体分析结果
 	if len(entities.Tokens) > 0 {
-		log.Printf("Extracted tokens: %v", entities.Tokens)
+		lr.I().Infof("Extracted tokens: %v", entities.Tokens)
 	}
 
 	if len(entities.Persons) > 0 {
-		log.Printf("Extracted persons: %v", entities.Persons)
+		lr.I().Infof("Extracted persons: %v", entities.Persons)
 	}
 
 	if len(entities.Accounts) > 0 {
-		log.Printf("Extracted accounts: %v", entities.Accounts)
+		lr.I().Infof("Extracted accounts: %v", entities.Accounts)
 	}
 
 	return result
@@ -132,7 +132,7 @@ func storeMessageData(data *model.MessageData, tweetInfo map[string]interface{},
 		return fmt.Errorf("failed to marshal storage data: %w", err)
 	}
 
-	log.Printf("Stored data for message %s:\n%s", data.ID, string(jsonData))
+	lr.I().Infof("Stored data for message %s:\n%s", data.ID, string(jsonData))
 
 	return nil
 }

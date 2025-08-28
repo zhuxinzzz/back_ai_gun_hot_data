@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"back_ai_gun_data/model"
+	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/service"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -81,12 +82,12 @@ func (c *Consumer) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to register consumer: %w", err)
 	}
 
-	log.Printf("Consumer started, listening on queue: %s", c.config.QueueName)
+	lr.I().Infof("Consumer started, listening on queue: %s", c.config.QueueName)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Consumer context cancelled, stopping...")
+			lr.I().Info("Consumer context cancelled, stopping...")
 			return nil
 		case msg := <-msgs:
 			c.handleMessage(msg)
@@ -98,30 +99,30 @@ func (c *Consumer) Start(ctx context.Context) error {
 func (c *Consumer) handleMessage(msg amqp.Delivery) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("Panic in message handler: %v", r)
+			lr.E().Errorf("Panic in message handler: %v", r)
 			msg.Nack(false, true) // 重新入队
 		}
 	}()
 
-	log.Printf("Received message: %s", msg.MessageId)
+	lr.I().Infof("Received message: %s", msg.MessageId)
 
 	var messageData model.MessageData
 	if err := json.Unmarshal(msg.Body, &messageData); err != nil {
-		log.Printf("Failed to unmarshal message: %v", err)
+		lr.E().Errorf("Failed to unmarshal message: %v", err)
 		msg.Nack(false, false) // 拒绝消息，不重新入队
 		return
 	}
 
 	// 调用独立的业务处理函数
 	if err := service.ProcessMessageData(&messageData); err != nil {
-		log.Printf("Failed to process message: %v", err)
+		lr.E().Errorf("Failed to process message: %v", err)
 		msg.Nack(false, true) // 重新入队
 		return
 	}
 
 	// 确认消息
 	msg.Ack(false)
-	log.Printf("Message processed successfully: %s", messageData.ID)
+	lr.I().Infof("Message processed successfully: %s", messageData.ID)
 }
 
 // 确保队列存在
@@ -147,13 +148,13 @@ func (c *Consumer) ensureQueueExists() error {
 func (c *Consumer) Close() error {
 	if c.channel != nil {
 		if err := c.channel.Close(); err != nil {
-			log.Printf("Failed to close channel: %v", err)
+			lr.E().Errorf("Failed to close channel: %v", err)
 		}
 	}
 
 	if c.conn != nil {
 		if err := c.conn.Close(); err != nil {
-			log.Printf("Failed to close connection: %v", err)
+			lr.E().Errorf("Failed to close connection: %v", err)
 		}
 	}
 

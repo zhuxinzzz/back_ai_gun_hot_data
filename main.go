@@ -2,20 +2,22 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"back_ai_gun_data/consumer"
+	"back_ai_gun_data/pkg/lr"
 )
 
 func main() {
+	lr.Init()
+
 	config := consumer.GetConfigFromEnv()
 
 	c, err := consumer.NewConsumer(config)
 	if err != nil {
-		log.Fatalf("Failed to create consumer: %v", err)
+		lr.E().Fatalf("Failed to create consumer: %v", err)
 	}
 	defer c.Close()
 
@@ -27,13 +29,10 @@ func main() {
 
 	go func() {
 		if err := c.Start(ctx); err != nil {
-			log.Printf("Consumer error: %v", err)
+			lr.E().Errorf("Consumer error: %v", err)
 		}
 	}()
 
-	//log.Println("Consumer service started. Press Ctrl+C to stop.")
-
 	<-sigChan
-	//log.Println("Shutting down consumer service...")
 	cancel()
 }
