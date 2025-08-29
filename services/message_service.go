@@ -27,7 +27,6 @@ import (
 func ProcessMessageData(data *model.MessageData) error {
 	entities := analyzeEntities(data)
 
-	// 阶段二：市场数据enriquecimiento与首次排名
 	if err := maintainAdminMarketData(data, entities); err != nil {
 		lr.E().Errorf("Admin market data failed: %v", err)
 	}

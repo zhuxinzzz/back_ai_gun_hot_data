@@ -49,12 +49,20 @@ func startConsumer(ctx context.Context) error {
 		return fmt.Errorf("queue declare failed: %w", err)
 	}
 
+	// 处理历史消息
+	if err := processHistoricalMessages(ch, queueName); err != nil {
+		lr.E().Errorf("Failed to process historical messages: %v", err)
+		// 不返回错误，继续处理新消息
+	}
+
 	consumerTag := fmt.Sprintf("etl-consumer-token-data-%d", os.Getpid())
 	msgs, err := ch.Consume(queueName, consumerTag, false, false, false, false, nil)
 	if err != nil {
 		lr.E().Errorf("Failed to register consumer: %v", err)
 		return fmt.Errorf("consume failed: %w", err)
 	}
+
+	lr.I().Infof("Consumer started, listening on queue: %s", queueName)
 
 	var semaphore = make(chan struct{}, getEnvInt("MAX_CONCURRENT", 100))
 
@@ -111,6 +119,43 @@ func handleMsg(msg amqp.Delivery) {
 		lr.E().Error(err)
 		return
 	}
+}
+
+func processHistoricalMessages(ch *amqp.Channel, queueName string) error {
+	lr.I().Infof("Processing historical messages from queue: %s", queueName)
+
+	processedCount := 0
+	maxHistoricalMessages := getEnvInt("MAX_HISTORICAL_MESSAGES", 1000) // 限制处理的历史消息数量
+
+	for processedCount < maxHistoricalMessages {
+		// 使用Get方法获取消息，不自动确认
+		msg, ok, err := ch.Get(queueName, false)
+		if err != nil {
+			return fmt.Errorf("failed to get message: %w", err)
+		}
+
+		// 如果没有更多消息，退出循环
+		if !ok {
+			break
+		}
+
+		// 处理消息
+		handleMsg(msg)
+		processedCount++
+
+		// 每处理100条消息输出一次进度
+		if processedCount%100 == 0 {
+			lr.I().Infof("Processed %d historical messages", processedCount)
+		}
+	}
+
+	if processedCount > 0 {
+		lr.I().Infof("Finished processing %d historical messages", processedCount)
+	} else {
+		lr.I().Info("No historical messages found")
+	}
+
+	return nil
 }
 
 func getEnv(key, defaultValue string) string {
