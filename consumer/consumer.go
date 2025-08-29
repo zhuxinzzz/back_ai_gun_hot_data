@@ -49,13 +49,12 @@ func startConsumer(ctx context.Context) error {
 		return fmt.Errorf("queue declare failed: %w", err)
 	}
 
-	msgs, err := ch.Consume(queueName, "", false, false, false, false, nil)
+	consumerTag := fmt.Sprintf("etl-consumer-token-data-%d", os.Getpid())
+	msgs, err := ch.Consume(queueName, consumerTag, false, false, false, false, nil)
 	if err != nil {
 		lr.E().Errorf("Failed to register consumer: %v", err)
 		return fmt.Errorf("consume failed: %w", err)
 	}
-
-	lr.I().Infof("Consumer started, listening on queue: %s", queueName)
 
 	var semaphore = make(chan struct{}, getEnvInt("MAX_CONCURRENT", 100))
 
