@@ -33,14 +33,15 @@ func ProcessIntelligenceCoinCache(data *model.MessageData) error {
 	// 从消息中提取币信息
 	coins, err := extractCoinsFromMessage(data)
 	if err != nil {
+		lr.E().Errorf("Failed to extract coins from message: %v", err)
 		return fmt.Errorf("failed to extract coins from message: %w", err)
 	}
 
 	if err := updateIntelligenceCoinCache(intelligenceID, coins); err != nil {
+		lr.E().Errorf("Failed to update intelligence coin cache: %v", err)
 		return fmt.Errorf("failed to update intelligence coin cache: %w", err)
 	}
 
-	lr.I().Infof("Successfully updated intelligence coin cache for intelligence %s with %d coins", intelligenceID, len(coins))
 	return nil
 }
 
@@ -139,7 +140,7 @@ func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.Intellige
 	}
 
 	// 处理币热数据流程（更新admin服务缓存、排序、打标签、进入热数据缓存）
-	if err := ProcessCoinHotData(newCoins); err != nil {
+	if err := ProcessCoinHotData(intelligenceID, newCoins); err != nil {
 		lr.E().Errorf("Failed to process coin hot data for intelligence %s: %v", intelligenceID, err)
 		// 热数据处理失败不影响主缓存更新流程
 	}
@@ -196,6 +197,7 @@ func getIntelligenceCoinCache(intelligenceID string) (*dto.IntelligenceCoinCache
 
 	var data dto.IntelligenceCoinCacheData
 	if err := json.Unmarshal([]byte(cacheData), &data); err != nil {
+		lr.E().Errorf("Failed to unmarshal cache data: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
 	}
 
@@ -209,6 +211,7 @@ func setIntelligenceCoinCache(intelligenceID string, data *dto.IntelligenceCoinC
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
+		lr.E().Errorf("Failed to marshal cache data: %v", err)
 		return fmt.Errorf("failed to marshal cache data: %w", err)
 	}
 
@@ -225,13 +228,6 @@ func shouldPersist(data *dto.IntelligenceCoinCacheData) bool {
 func persistIntelligenceCoinData(data *dto.IntelligenceCoinCacheData) error {
 	// TODO: 实现持久化逻辑
 	// 这里可以存储到数据库、文件系统或其他持久化存储
-	lr.I().Infof("Persisting intelligence coin data for intelligence %s with %d coins", data.IntelligenceID, len(data.Coins))
-
-	// 示例：记录到日志
-	for _, coin := range data.Coins {
-		lr.I().Infof("Persisting coin: %s (ID: %s, EntityID: %s)", coin.Name, coin.ID, coin.EntityID)
-	}
-
 	return nil
 }
 
@@ -251,26 +247,6 @@ func DeleteIntelligenceCoinCache(intelligenceID string) error {
 	return cache.Del(ctx, cacheKey)
 }
 
-// UpdateCoinMarketData 更新币的市场数据
-func UpdateCoinMarketData(intelligenceID, coinName string, marketStats dto.CoinMarketStats) error {
-	data, err := getIntelligenceCoinCache(intelligenceID)
-	if err != nil {
-		return err
-	}
-
-	// 查找并更新指定币的市场数据
-	for i, coin := range data.Coins {
-		if coin.Name == coinName {
-			data.Coins[i].Stats = marketStats
-			data.Coins[i].UpdatedAt = time.Now()
-			data.UpdatedAt = time.Now()
-			break
-		}
-	}
-
-	return setIntelligenceCoinCache(intelligenceID, data)
-}
-
 // updateMarketInfoFromGMGN 从GMGN服务更新市场信息
 func updateMarketInfoFromGMGN(coins []dto.IntelligenceCoinCache) error {
 	// 收集所有需要查询的币名称
@@ -285,7 +261,6 @@ func updateMarketInfoFromGMGN(coins []dto.IntelligenceCoinCache) error {
 	}
 
 	if len(coinNames) == 0 {
-		lr.I().Info("No valid coin names to query")
 		return nil
 	}
 
@@ -315,13 +290,9 @@ func updateMarketInfoFromGMGN(coins []dto.IntelligenceCoinCache) error {
 					coins[j].Stats.CurrentMarketCap = token.MarketCap
 					coins[j].UpdatedAt = time.Now()
 
-					lr.I().Infof("Updated market info for %s: Price=%s, MarketCap=%s",
-						coin.Name, token.PriceUSD, token.MarketCap)
 					break
 				}
 			}
-		} else {
-			lr.E().Warnf("No market data found for coin: %s", coin.Name)
 		}
 	}
 

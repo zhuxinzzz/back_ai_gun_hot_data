@@ -4,7 +4,6 @@ import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/services/remote_service"
-	"back_ai_gun_data/utils"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -26,11 +25,9 @@ const (
 // 2. 调用admin服务排序接口
 // 3. 打热点标签（is_show字段）
 // 4. 进入热数据缓存
-func ProcessCoinHotData(coins []dto.IntelligenceCoinCache) error {
-	lr.I().Infof("Processing coin hot data for %d coins", len(coins))
-
+func ProcessCoinHotData(intelligenceID string, coins []dto.IntelligenceCoinCache) error {
 	// 步骤1: 更新admin服务缓存中的市场信息
-	if err := updateAdminMarketData(coins); err != nil {
+	if err := updateAdminMarketData(intelligenceID, coins); err != nil {
 		lr.E().Errorf("Failed to update admin market data: %v", err)
 		// 继续执行，不中断流程
 	}
@@ -48,123 +45,75 @@ func ProcessCoinHotData(coins []dto.IntelligenceCoinCache) error {
 		return err
 	}
 
-	lr.I().Infof("Successfully processed coin hot data for %d coins", len(coins))
 	return nil
 }
 
 // updateAdminMarketData 更新admin服务缓存中的市场信息
-func updateAdminMarketData(coins []dto.IntelligenceCoinCache) error {
-	var marketData []dto.AdminMarketData
-
-	for _, coin := range coins {
-		// 跳过没有名称或市场数据的币
-		if coin.Name == "" || (coin.Stats.CurrentPriceUSD == "" && coin.Stats.CurrentMarketCap == "") {
-			continue
-		}
-
-		adminData := dto.AdminMarketData{
-			CoinID:           coin.ID,
-			Name:             coin.Name,
-			Symbol:           coin.Symbol,
-			ContractAddress:  coin.ContractAddress, // 可能为空，但不影响主要功能
-			Chain:            coin.Chain.Slug,
-			CurrentPriceUSD:  coin.Stats.CurrentPriceUSD,
-			CurrentMarketCap: coin.Stats.CurrentMarketCap,
-			Ranking:          0, // 初始排名为0
-			IsShow:           false,
-			UpdatedAt:        time.Now().Format(time.RFC3339),
-		}
-		marketData = append(marketData, adminData)
-	}
-
-	if len(marketData) == 0 {
-		lr.I().Info("No market data to update")
-		return nil
-	}
-
+func updateAdminMarketData(intelligenceID string, coins []dto.IntelligenceCoinCache) error {
 	// 调用admin服务更新市场信息
-	if err := remote_service.UpdateAdminMarketData(marketData); err != nil {
+	if err := remote_service.UpdateAdminMarketData(intelligenceID); err != nil {
+		lr.E().Errorf("Failed to update admin market data: %v", err)
 		return fmt.Errorf("failed to update admin market data: %w", err)
 	}
 
-	lr.I().Infof("Updated admin market data for %d coins", len(marketData))
 	return nil
 }
 
 // callAdminRankingService 调用admin服务排序接口
 func callAdminRankingService(coins []dto.IntelligenceCoinCache) (*dto.AdminRankingResponse, error) {
-	var adminCoins []dto.AdminMarketData
-
+	// 过滤有效的币种
+	var validCoins []dto.IntelligenceCoinCache
 	for _, coin := range coins {
-		// 跳过没有名称或市场数据的币
-		if coin.Name == "" || (coin.Stats.CurrentPriceUSD == "" && coin.Stats.CurrentMarketCap == "") {
+		// 跳过没有名称的币
+		if coin.Name == "" {
 			continue
 		}
-
-		adminData := dto.AdminMarketData{
-			CoinID:           coin.ID,
-			Name:             coin.Name,
-			Symbol:           coin.Symbol,
-			ContractAddress:  coin.ContractAddress, // 可能为空，但不影响主要功能
-			Chain:            coin.Chain.Slug,
-			CurrentPriceUSD:  coin.Stats.CurrentPriceUSD,
-			CurrentMarketCap: coin.Stats.CurrentMarketCap,
-			Ranking:          0,
-			IsShow:           false,
-			UpdatedAt:        time.Now().Format(time.RFC3339),
-		}
-		adminCoins = append(adminCoins, adminData)
+		validCoins = append(validCoins, coin)
 	}
 
-	if len(adminCoins) == 0 {
-		lr.I().Info("No coins to rank")
+	if len(validCoins) == 0 {
 		return &dto.AdminRankingResponse{
 			Code:    0,
 			Message: "success",
-			Data:    []dto.AdminMarketData{},
+			Data:    []dto.IntelligenceCoinCache{},
 		}, nil
 	}
 
 	// 调用admin服务排序接口
-	response, err := remote_service.CallAdminRankingService(adminCoins)
+	response, err := remote_service.CallAdminRankingService(validCoins)
 	if err != nil {
+		lr.E().Errorf("Failed to call admin ranking service: %v", err)
 		return nil, fmt.Errorf("failed to call admin ranking service: %w", err)
 	}
 
-	lr.I().Infof("Called admin ranking service for %d coins", len(adminCoins))
 	return response, nil
 }
 
 // processHotDataLabels 处理热点标签并进入热数据缓存
-func processHotDataLabels(rankedCoins []dto.AdminMarketData) error {
+func processHotDataLabels(rankedCoins []dto.IntelligenceCoinCache) error {
 	var hotDataCoins []dto.CoinHotData
 
 	for _, rankedCoin := range rankedCoins {
-		// 检查是否进入前三名
-		isTopThree := rankedCoin.Ranking > 0 && rankedCoin.Ranking <= 3
+		// 检查是否进入前三名（暂时使用默认逻辑，后续需要从排序服务获取排名）
+		isTopThree := false // TODO: 从排序服务获取实际排名
 
 		// 创建热数据
 		hotData := dto.CoinHotData{
-			ID:              rankedCoin.CoinID,
-			EntityID:        utils.GenerateUUIDV7(),
+			ID:              rankedCoin.ID,
+			EntityID:        rankedCoin.EntityID,
 			Name:            rankedCoin.Name,
 			Symbol:          rankedCoin.Symbol,
-			Standard:        stringPtr("ERC20"),
-			Decimals:        18,
+			Standard:        rankedCoin.Standard,
+			Decimals:        rankedCoin.Decimals,
 			ContractAddress: rankedCoin.ContractAddress,
-			Logo:            "",
-			Stats: dto.CoinMarketStats{
-				CurrentPriceUSD:  rankedCoin.CurrentPriceUSD,
-				CurrentMarketCap: rankedCoin.CurrentMarketCap,
-			},
-			Chain: dto.ChainInfo{
-				Slug: rankedCoin.Chain,
-			},
-			IsShow:         rankedCoin.IsShow || isTopThree,
-			Ranking:        rankedCoin.Ranking,
-			HighestRanking: rankedCoin.Ranking,
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
+			Logo:            rankedCoin.Logo,
+			Stats:           rankedCoin.Stats,
+			Chain:           rankedCoin.Chain,
+			IsShow:          isTopThree, // 暂时只有前三名显示
+			Ranking:         0,          // TODO: 从排序服务获取实际排名
+			HighestRanking:  0,          // TODO: 从排序服务获取历史最高排名
+			CreatedAt:       rankedCoin.CreatedAt,
+			UpdatedAt:       time.Now(),
 		}
 
 		// 如果是首次进入前三，记录时间
@@ -184,9 +133,9 @@ func processHotDataLabels(rankedCoins []dto.AdminMarketData) error {
 	// 更新热数据缓存
 	if len(hotDataCoins) > 0 {
 		if err := updateCoinHotDataCache(hotDataCoins); err != nil {
+			lr.E().Errorf("Failed to update coin hot data cache: %v", err)
 			return fmt.Errorf("failed to update coin hot data cache: %w", err)
 		}
-		lr.I().Infof("Updated coin hot data cache with %d coins", len(hotDataCoins))
 	}
 
 	return nil
@@ -243,6 +192,7 @@ func getCoinHotDataCache() (*dto.CoinHotDataCache, error) {
 
 	var data dto.CoinHotDataCache
 	if err := json.Unmarshal([]byte(cacheData), &data); err != nil {
+		lr.E().Errorf("Failed to unmarshal hot data cache: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal hot data cache: %w", err)
 	}
 
@@ -256,6 +206,7 @@ func setCoinHotDataCache(data *dto.CoinHotDataCache) error {
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
+		lr.E().Errorf("Failed to marshal hot data cache: %v", err)
 		return fmt.Errorf("failed to marshal hot data cache: %w", err)
 	}
 

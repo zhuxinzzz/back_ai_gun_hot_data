@@ -18,6 +18,7 @@ func ProcessTagAssociation(entityID, projectName string) error {
 	// 查找tag
 	tag, err := dao.GetTagBySlug(projectName)
 	if err != nil {
+		lr.E().Errorf("Failed to get tag by slug: %v", err)
 		return err
 	}
 
@@ -33,6 +34,7 @@ func ProcessTagAssociation(entityID, projectName string) error {
 		}
 
 		if err := dao.CreateTag(newTag); err != nil {
+			lr.E().Errorf("Failed to create tag: %v", err)
 			return err
 		}
 		tagID = newTag.ID
@@ -51,6 +53,7 @@ func ProcessTagAssociation(entityID, projectName string) error {
 	}
 
 	if err := dao.CreateEntityTag(entityTag); err != nil {
+		lr.E().Errorf("Failed to create entity tag: %v", err)
 		return err
 	}
 

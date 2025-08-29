@@ -5,13 +5,10 @@ import (
 	"back_ai_gun_data/pkg/model"
 	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/services/remote_service"
-	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/utils"
 )
@@ -39,34 +36,9 @@ func ProcessMessageData(data *model.MessageData) error {
 }
 
 func maintainAdminMarketData(data *model.MessageData, entities map[string]interface{}) error {
-	tokens, ok := entities["tokens"].([]string)
-	if !ok || len(tokens) == 0 {
-		return nil
-	}
-
-	namesStr := strings.Join(tokens, ",")
-	tokenInfos, err := remote_service.QueryTokensByName(namesStr, "")
-	if err != nil {
-		return fmt.Errorf("GMGN query failed: %w", err)
-	}
-
-	var marketData []dto.AdminMarketData
-	for _, tokenInfo := range tokenInfos {
-		marketData = append(marketData, dto.AdminMarketData{
-			CoinID:           utils.GenerateUUIDV7(),
-			Name:             tokenInfo.Name,
-			Symbol:           tokenInfo.Symbol,
-			ContractAddress:  tokenInfo.Address,
-			Chain:            tokenInfo.Network,
-			CurrentPriceUSD:  tokenInfo.PriceUSD,
-			CurrentMarketCap: tokenInfo.MarketCap,
-			Ranking:          0,
-			IsShow:           false,
-			UpdatedAt:        time.Now().Format(time.RFC3339),
-		})
-	}
-
-	if err := remote_service.UpdateAdminMarketData(marketData); err != nil {
+	// 直接调用admin服务更新市场信息
+	// admin服务会从缓存读取数据，然后使用GMGN更新市场信息
+	if err := remote_service.UpdateAdminMarketData(data.ID); err != nil {
 		return fmt.Errorf("admin update failed: %w", err)
 	}
 
@@ -74,103 +46,9 @@ func maintainAdminMarketData(data *model.MessageData, entities map[string]interf
 }
 
 func processCoinRankingAndHotData(data *model.MessageData, entities map[string]interface{}) error {
-	tokens, ok := entities["tokens"].([]string)
-	if !ok || len(tokens) == 0 {
-		return nil
-	}
-
-	var adminCoins []dto.AdminMarketData
-	for _, tokenName := range tokens {
-		adminCoins = append(adminCoins, dto.AdminMarketData{
-			CoinID:           utils.GenerateUUIDV7(),
-			Name:             tokenName,
-			Symbol:           generateSymbol(tokenName),
-			ContractAddress:  "",
-			Chain:            "eth",
-			CurrentPriceUSD:  "0",
-			CurrentMarketCap: "0",
-			Ranking:          0,
-			IsShow:           false,
-			UpdatedAt:        time.Now().Format(time.RFC3339),
-		})
-	}
-
-	rankingResponse, err := remote_service.CallAdminRankingService(adminCoins)
-	if err != nil {
-		return fmt.Errorf("ranking service failed: %w", err)
-	}
-
-	var hotDataCoins []dto.CoinHotData
-	for _, rankedCoin := range rankingResponse.Data {
-		isTopThree := rankedCoin.Ranking > 0 && rankedCoin.Ranking <= 3
-
-		if isTopThree || rankedCoin.IsShow {
-			hotData := dto.CoinHotData{
-				ID:              rankedCoin.CoinID,
-				EntityID:        utils.GenerateUUIDV7(),
-				Name:            rankedCoin.Name,
-				Symbol:          rankedCoin.Symbol,
-				Standard:        stringPtr("ERC20"),
-				Decimals:        18,
-				ContractAddress: rankedCoin.ContractAddress,
-				Logo:            "",
-				Stats: dto.CoinMarketStats{
-					CurrentPriceUSD:  rankedCoin.CurrentPriceUSD,
-					CurrentMarketCap: rankedCoin.CurrentMarketCap,
-				},
-				Chain: dto.ChainInfo{
-					Slug: rankedCoin.Chain,
-				},
-				IsShow:         true,
-				Ranking:        rankedCoin.Ranking,
-				HighestRanking: rankedCoin.Ranking,
-				CreatedAt:      time.Now(),
-				UpdatedAt:      time.Now(),
-			}
-
-			if isTopThree {
-				now := time.Now()
-				hotData.FirstRankedAt = &now
-				hotData.LastRankedAt = &now
-			}
-
-			hotDataCoins = append(hotDataCoins, hotData)
-		}
-	}
-
-	if len(hotDataCoins) > 0 {
-		if err := updateCoinHotDataCache(hotDataCoins); err != nil {
-			return fmt.Errorf("hot data cache failed: %w", err)
-		}
-	}
-
+	// TODO: 实现排序和热数据处理逻辑
+	// 这里需要从缓存读取数据，调用排序服务，然后更新热数据缓存
 	return nil
-}
-
-func extractTweetInfo(data *model.MessageData) map[string]interface{} {
-	info := map[string]interface{}{
-		"tweet_id":      data.Data.TweetID,
-		"content":       data.Data.Content,
-		"source_url":    data.Data.SourceURL,
-		"published_at":  time.Unix(data.Data.PublishedAt/1000, 0).Format(time.RFC3339),
-		"type":          data.Data.Type,
-		"subtype":       data.Data.Subtype,
-		"analyzed_time": time.Unix(data.Data.AnalyzedTime/1000, 0).Format(time.RFC3339),
-	}
-
-	if data.Data.SenderInfo.ScreenName != "" {
-		info["sender"] = map[string]interface{}{
-			"screen_name":     data.Data.SenderInfo.ScreenName,
-			"name":            data.Data.SenderInfo.Name,
-			"follower_count":  data.Data.SenderInfo.FollowerCount,
-			"following_count": data.Data.SenderInfo.FollowingCount,
-			"description":     data.Data.SenderInfo.Description,
-			"location":        data.Data.SenderInfo.Location,
-			"avatar":          data.Data.SenderInfo.Avatar,
-		}
-	}
-
-	return info
 }
 
 // 分析实体信息
@@ -184,55 +62,7 @@ func analyzeEntities(data *model.MessageData) map[string]interface{} {
 		"accounts": entities.Accounts,
 	}
 
-	// 记录实体分析结果
-	if len(entities.Tokens) > 0 {
-		lr.I().Infof("Extracted tokens: %v", entities.Tokens)
-	}
-
-	if len(entities.Persons) > 0 {
-		lr.I().Infof("Extracted persons: %v", entities.Persons)
-	}
-
-	if len(entities.Accounts) > 0 {
-		lr.I().Infof("Extracted accounts: %v", entities.Accounts)
-	}
-
 	return result
-}
-
-// 存储消息数据
-func storeMessageData(data *model.MessageData, tweetInfo map[string]interface{}, entities map[string]interface{}) error {
-	// 这里应该实现实际的数据存储逻辑
-	// 例如：存储到数据库、写入文件、发送到其他服务等
-
-	// 示例：将数据转换为JSON并记录
-	storageData := map[string]interface{}{
-		"message_id": data.ID,
-		"timestamp":  data.Timestamp,
-		"version":    data.Version,
-		"tweet_info": tweetInfo,
-		"entities":   entities,
-		"stored_at":  time.Now().Format(time.RFC3339),
-	}
-
-	jsonData, err := json.MarshalIndent(storageData, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal storage data: %w", err)
-	}
-
-	// 使用缓存存储数据
-	ctx := context.Background()
-	cacheKey := fmt.Sprintf("message:%s", data.ID)
-
-	// 存储到Redis缓存，过期时间30分钟
-	if err := cache.Set(ctx, cacheKey, string(jsonData), 30*time.Minute); err != nil {
-		lr.E().Errorf("Failed to cache message data: %v", err)
-		// 缓存失败不影响主流程，只记录错误
-	}
-
-	lr.I().Infof("Stored data for message %s:\n%s", data.ID, string(jsonData))
-
-	return nil
 }
 
 func processCoinHotDataFromETL(data *model.MessageData, entities map[string]interface{}) error {
@@ -244,12 +74,10 @@ func processCoinHotDataFromETL(data *model.MessageData, entities map[string]inte
 
 	// 转换为列表用于处理
 	tokenNames := getTokenNameList(entities)
-	lr.I().Infof("Processing %d tokens from ETL data: %v", len(tokenNames), tokenNames)
 
 	// 将token名称列表转换为逗号分隔的字符串
 	tokenNamesStr := joinTokenNames(tokenNames)
 	if tokenNamesStr != "" {
-		lr.I().Infof("Token names string: %s", tokenNamesStr)
 		// 这里可以调用远程服务，例如：
 		// remote_service.QueryTokensByName(tokenNamesStr)
 		_, err := remote_service.QueryTokensByName(tokenNamesStr, "")
@@ -266,22 +94,26 @@ func processTokenFromETL(tokenName string, data *model.MessageData) error {
 	// 创建或获取情报
 	intelligence, err := createOrGetIntelligenceFromETL(tokenName, data)
 	if err != nil {
+		lr.E().Errorf("Failed to create/get intelligence for token %s: %v", tokenName, err)
 		return fmt.Errorf("failed to create/get intelligence for token %s: %w", tokenName, err)
 	}
 
 	// 创建或获取实体
 	entity, err := createOrGetEntityFromETL(tokenName)
 	if err != nil {
+		lr.E().Errorf("Failed to create/get entity for token %s: %v", tokenName, err)
 		return fmt.Errorf("failed to create/get entity for token %s: %w", tokenName, err)
 	}
 
 	// 创建情报实体关联
 	if err := createIntelligenceEntityRelation(intelligence.ID, entity.ID); err != nil {
+		lr.E().Errorf("Failed to create intelligence-entity relation: %v", err)
 		return fmt.Errorf("failed to create intelligence-entity relation: %w", err)
 	}
 
 	// 触发币数据搜索和更新
 	if err := triggerCoinDataSearch(tokenName, entity.ID, intelligence.ID); err != nil {
+		lr.E().Errorf("Failed to trigger coin data search: %v", err)
 		return fmt.Errorf("failed to trigger coin data search: %w", err)
 	}
 
@@ -323,6 +155,7 @@ func createOrGetIntelligenceFromETL(tokenName string, data *model.MessageData) (
 	}
 
 	if err := dao.CreateIntelligence(intelligence); err != nil {
+		lr.E().Errorf("Failed to create intelligence: %v", err)
 		return nil, err
 	}
 
@@ -333,6 +166,7 @@ func createOrGetEntityFromETL(tokenName string) (*dto.Entity, error) {
 	// 检查是否已存在实体
 	existingEntity, err := dao.GetEntityBySlugAndType(tokenName, "token")
 	if err != nil {
+		lr.E().Errorf("Failed to get entity by slug and type: %v", err)
 		return nil, err
 	}
 
@@ -348,6 +182,7 @@ func createOrGetEntityFromETL(tokenName string) (*dto.Entity, error) {
 	}
 
 	if err := createEntity(entity); err != nil {
+		lr.E().Errorf("Failed to create entity: %v", err)
 		return nil, err
 	}
 
