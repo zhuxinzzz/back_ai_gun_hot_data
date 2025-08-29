@@ -57,13 +57,19 @@ func startConsumer(ctx context.Context) error {
 
 	lr.I().Infof("Consumer started, listening on queue: %s", queueName)
 
+	var semaphore = make(chan struct{}, getEnvInt("MAX_CONCURRENT", 100))
+
 	for {
 		select {
 		case <-ctx.Done():
 			lr.I().Info("Consumer context cancelled, stopping...")
 			return nil
 		case msg := <-msgs:
-			handleMsg(msg)
+			semaphore <- struct{}{} // 获取信号量
+			go func(msg amqp.Delivery) {
+				defer func() { <-semaphore }() // 释放信号量
+				handleMsg(msg)
+			}(msg)
 		}
 	}
 }

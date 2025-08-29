@@ -4,9 +4,12 @@ import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/model"
 	"back_ai_gun_data/pkg/model/dto"
+	"back_ai_gun_data/pkg/model/remote"
+	"back_ai_gun_data/services/remote_service"
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"back_ai_gun_data/pkg/lr"
@@ -24,7 +27,6 @@ const (
 	PersistenceTriggerTime = 3 * 24 * time.Hour
 )
 
-// ProcessIntelligenceCoinCache 处理情报-币缓存（主入口函数）
 func ProcessIntelligenceCoinCache(data *model.MessageData) error {
 	intelligenceID := data.ID
 
@@ -34,12 +36,6 @@ func ProcessIntelligenceCoinCache(data *model.MessageData) error {
 		return fmt.Errorf("failed to extract coins from message: %w", err)
 	}
 
-	if len(coins) == 0 {
-		lr.I().Infof("No coins found in message %s", data.ID)
-		return nil
-	}
-
-	// 更新缓存
 	if err := updateIntelligenceCoinCache(intelligenceID, coins); err != nil {
 		return fmt.Errorf("failed to update intelligence coin cache: %w", err)
 	}
@@ -125,22 +121,31 @@ func generateSymbol(name string) string {
 
 // updateIntelligenceCoinCache 更新情报-币缓存
 func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.IntelligenceCoinCache) error {
-	// 获取现有缓存数据
-	existingData, err := getIntelligenceCoinCache(intelligenceID)
+	intelligenceCoinCache, err := getIntelligenceCoinCache(intelligenceID)
 	if err != nil {
 		lr.E().Errorf("Failed to get existing cache for intelligence %s: %v", intelligenceID, err)
 		// 如果获取失败，创建新的缓存数据
-		existingData = &dto.IntelligenceCoinCacheData{
+		intelligenceCoinCache = &dto.IntelligenceCoinCacheData{
 			IntelligenceID: intelligenceID,
 			Coins:          []dto.IntelligenceCoinCache{},
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
 		}
 	}
+	// 调用GMGN服务更新市场信息
+	if err := updateMarketInfoFromGMGN(newCoins); err != nil {
+		lr.E().Errorf("Failed to update market info from GMGN for intelligence %s: %v", intelligenceID, err)
+		// 即使GMGN调用失败，也继续更新缓存，只是市场信息可能不是最新的
+	}
 
-	// 合并币信息（避免重复）
+	// 处理币热数据流程（更新admin服务缓存、排序、打标签、进入热数据缓存）
+	if err := ProcessCoinHotData(newCoins); err != nil {
+		lr.E().Errorf("Failed to process coin hot data for intelligence %s: %v", intelligenceID, err)
+		// 热数据处理失败不影响主缓存更新流程
+	}
+
 	existingCoins := make(map[string]dto.IntelligenceCoinCache)
-	for _, coin := range existingData.Coins {
+	for _, coin := range intelligenceCoinCache.Coins {
 		existingCoins[coin.Name] = coin
 	}
 
@@ -164,7 +169,7 @@ func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.Intellige
 	updatedData := &dto.IntelligenceCoinCacheData{
 		IntelligenceID: intelligenceID,
 		Coins:          updatedCoins,
-		CreatedAt:      existingData.CreatedAt,
+		CreatedAt:      intelligenceCoinCache.CreatedAt,
 		UpdatedAt:      time.Now(),
 	}
 
@@ -180,7 +185,6 @@ func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.Intellige
 	return setIntelligenceCoinCache(intelligenceID, updatedData)
 }
 
-// getIntelligenceCoinCache 获取情报-币缓存
 func getIntelligenceCoinCache(intelligenceID string) (*dto.IntelligenceCoinCacheData, error) {
 	ctx := context.Background()
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
@@ -265,6 +269,63 @@ func UpdateCoinMarketData(intelligenceID, coinName string, marketStats dto.CoinM
 	}
 
 	return setIntelligenceCoinCache(intelligenceID, data)
+}
+
+// updateMarketInfoFromGMGN 从GMGN服务更新市场信息
+func updateMarketInfoFromGMGN(coins []dto.IntelligenceCoinCache) error {
+	// 收集所有需要查询的币名称
+	var coinNames []string
+	var validCoins []dto.IntelligenceCoinCache
+
+	for _, coin := range coins {
+		if coin.Name != "" {
+			coinNames = append(coinNames, coin.Name)
+			validCoins = append(validCoins, coin)
+		}
+	}
+
+	if len(coinNames) == 0 {
+		lr.I().Info("No valid coin names to query")
+		return nil
+	}
+
+	// 将名称列表转换为逗号分隔的字符串
+	namesStr := strings.Join(coinNames, ",")
+
+	// 批量调用GMGN服务查询市场信息
+	tokens, err := remote_service.QueryTokensByName(namesStr, "")
+	if err != nil {
+		lr.E().Errorf("Failed to query GMGN for coins: %v", err)
+		return err
+	}
+
+	// 创建token映射，用于快速查找
+	tokenMap := make(map[string]remote.TokenInfo)
+	for _, token := range tokens {
+		tokenMap[token.Name] = token
+	}
+
+	// 更新市场信息
+	for _, coin := range validCoins {
+		if token, exists := tokenMap[coin.Name]; exists {
+			// 找到对应的币，更新其索引
+			for j, originalCoin := range coins {
+				if originalCoin.Name == coin.Name {
+					coins[j].Stats.CurrentPriceUSD = token.PriceUSD
+					coins[j].Stats.CurrentMarketCap = token.MarketCap
+					coins[j].UpdatedAt = time.Now()
+
+					lr.I().Infof("Updated market info for %s: Price=%s, MarketCap=%s",
+						coin.Name, token.PriceUSD, token.MarketCap)
+					break
+				}
+			}
+		} else {
+			lr.E().Warnf("No market data found for coin: %s", coin.Name)
+		}
+	}
+
+	return nil
 }
 
 // 辅助函数

@@ -60,10 +60,10 @@ func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams)
 
 func QueryTokensByName(name string, chain string) ([]remote.TokenInfo, error) {
 	params := remote.TokenQueryParams{
-		Q:     name,
-		Chain: chain,
-		Limit: 10,
-		Fuzzy: 1,
+		Q:     name,  // 查询关键字,全称、简称、地址,多个查询用逗号分隔
+		Chain: chain, // 指定链
+		Limit: 10,    // 指定数量 默认值: 10
+		Fuzzy: 1,     // 是否为模糊匹配,1:是,0:否 默认值: 1
 	}
 
 	resp, err := QueryTokens(params)

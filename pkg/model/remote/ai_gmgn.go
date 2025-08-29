@@ -8,8 +8,8 @@ type TokenInfo struct {
 	Network    string `json:"network"`
 	IsInternal bool   `json:"is_internal"`
 	Logo       string `json:"logo"`
-	MarketCap  string `json:"market_cap"`
-	PriceUSD   string `json:"price_usd"`
+	MarketCap  string `json:"market_cap"` // 关键市场信息
+	PriceUSD   string `json:"price_usd"`  // 关键市场信息
 	Decimals   int    `json:"decimals"`
 }
 
