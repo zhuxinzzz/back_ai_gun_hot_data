@@ -15,14 +15,12 @@ import (
 )
 
 const (
-	// 缓存键前缀
 	IntelligenceCoinCacheKeyPrefix = "dogex:intelligence:latest_entity_info:intelligence_id:"
 )
 
 // UpdateAdminMarketData 更新admin服务缓存中的市场信息
 // 从缓存读取数据，使用GMGN查询更新市场信息，然后写回缓存
 func UpdateAdminMarketData(intelligenceID string) error {
-	// 从缓存读取现有的币种数据
 	cacheData, err := readIntelligenceCoinCacheFromRedis(intelligenceID)
 	if err != nil {
 		lr.E().Errorf("Failed to read intelligence coin cache: %v", err)
@@ -81,7 +79,12 @@ func UpdateAdminMarketData(intelligenceID string) error {
 
 		// 批量查询该链下的所有币
 		namesStr := strings.Join(coinNames, ",")
-		tokens, err := QueryTokensByName(namesStr, chainSlug)
+		// 根据币种数量动态设置Limit，每个币平均3个结果
+		limit := len(coinNames) * 3
+		if limit < 10 {
+			limit = 10 // 最少10个
+		}
+		tokens, err := QueryTokensByNameWithLimit(namesStr, chainSlug, limit)
 		if err != nil {
 			lr.E().Errorf("Failed to batch query GMGN for chain %s: %v", chainSlug, err)
 			continue

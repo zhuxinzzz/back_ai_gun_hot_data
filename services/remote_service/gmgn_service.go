@@ -59,16 +59,20 @@ func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams)
 }
 
 func QueryTokensByName(name string, chain string) ([]remote.GmGnToken, error) {
+	return QueryTokensByNameWithLimit(name, chain, 10) // 默认10，保持向后兼容
+}
+
+func QueryTokensByNameWithLimit(name string, chain string, limit int) ([]remote.GmGnToken, error) {
 	params := remote.TokenQueryParams{
 		Q:     name,  // 查询关键字,全称、简称、地址,多个查询用逗号分隔
 		Chain: chain, // 指定链
-		Limit: 10,    // 指定数量 默认值: 10
+		Limit: limit, // 由调用者控制数量
 		Fuzzy: 1,     // 是否为模糊匹配,1:是,0:否 默认值: 1
 	}
 
 	resp, err := QueryTokens(params)
 	if err != nil {
-		lr.E().Error("QueryTokensByName failed: ", err)
+		lr.E().Error("QueryTokensByNameWithLimit failed: ", err)
 		return nil, err
 	}
 
