@@ -63,8 +63,8 @@ import (
 */
 func TestQueryTokensByName(t *testing.T) {
 	lr.Init()
-	name := "HOKK"
-	chain := "Ethereum"
+	name := "CRYPTO,BITCOIN"
+	chain := ""
 
 	res, err := QueryTokensByName(name, chain)
 	assert.NoError(t, err)

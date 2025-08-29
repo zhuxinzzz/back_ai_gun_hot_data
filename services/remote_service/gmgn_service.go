@@ -15,19 +15,15 @@ func QueryTokens(params remote.TokenQueryParams) (*remote.TokenQueryResponse, er
 
 func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams) (*remote.TokenQueryResponse, error) {
 	queryParams := url.Values{}
-
 	if params.Q != "" {
 		queryParams.Set("q", params.Q)
 	}
-
 	if params.Chain != "" {
 		queryParams.Set("chain", params.Chain)
 	}
-
 	if params.Limit > 0 {
 		queryParams.Set("limit", strconv.Itoa(params.Limit))
 	}
-
 	if params.Fuzzy >= 0 {
 		queryParams.Set("fuzzy", strconv.Itoa(params.Fuzzy))
 	}
@@ -76,7 +72,6 @@ func QueryTokensByName(name string, chain string) ([]remote.TokenInfo, error) {
 		return nil, err
 	}
 
-	// 合并所有结果
 	var allTokens []remote.TokenInfo
 	for _, tokens := range resp.Data {
 		allTokens = append(allTokens, tokens...)
@@ -85,7 +80,6 @@ func QueryTokensByName(name string, chain string) ([]remote.TokenInfo, error) {
 	return allTokens, nil
 }
 
-// 便捷查询函数 - 按地址查询
 func QueryTokensByAddress(address string, chain string) ([]remote.TokenInfo, error) {
 	params := remote.TokenQueryParams{
 		Q:     address,

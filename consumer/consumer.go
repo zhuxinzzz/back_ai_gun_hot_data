@@ -72,24 +72,40 @@ func handleMsg(msg amqp.Delivery) {
 	defer func() {
 		if r := recover(); r != nil {
 			lr.E().Errorf("Panic in message handler: %v", r)
-			msg.Nack(false, true) // 重新入队
+			err := msg.Nack(false, true)
+			if err != nil {
+				lr.E().Error(err)
+				return
+			} // 重新入队
 		}
 	}()
 
 	var messageData model.MessageData
 	if err := json.Unmarshal(msg.Body, &messageData); err != nil {
 		lr.E().Errorf("Failed to unmarshal message: %v", err)
-		msg.Nack(false, false) // 拒绝消息，不重新入队
+		err := msg.Nack(false, false)
+		if err != nil {
+			lr.E().Error(err)
+			return
+		} // 拒绝消息，不重新入队
 		return
 	}
 
 	if err := services.ProcessMessageData(&messageData); err != nil {
 		lr.E().Errorf("Failed to process message: %v", err)
-		msg.Nack(false, true) // 重新入队
+		err := msg.Nack(false, true)
+		if err != nil {
+			lr.E().Error(err)
+			return
+		} // 重新入队
 		return
 	}
 
-	msg.Ack(false)
+	err := msg.Ack(false)
+	if err != nil {
+		lr.E().Error(err)
+		return
+	}
 }
 
 func getEnv(key, defaultValue string) string {

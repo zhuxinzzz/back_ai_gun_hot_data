@@ -1,8 +1,7 @@
 package model
 
-// 消息数据结构
 type MessageData struct {
-	ID        string    `json:"id"`
+	ID        string    `json:"id"` // 情报 id
 	Timestamp int64     `json:"timestamp"`
 	Version   string    `json:"version"`
 	Data      TweetData `json:"data"`
@@ -19,7 +18,7 @@ type TweetData struct {
 	AnalyzedTime    int64      `json:"analyzed_time"`
 	EntitiesExtract struct {
 		Entities struct {
-			Tokens   []string `json:"tokens"`
+			Tokens   []string `json:"tokens"` // token 名字集合，一个情报可能涉及多个 token
 			Projects []string `json:"projects"`
 			Persons  []string `json:"persons"`
 			Accounts []string `json:"accounts"`

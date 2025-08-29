@@ -1,7 +1,9 @@
 package services
 
 import (
+	"back_ai_gun_data/pkg/dao"
 	"back_ai_gun_data/pkg/model"
+	"back_ai_gun_data/pkg/model/dto"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,46 +11,35 @@ import (
 
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
+	"back_ai_gun_data/utils"
 )
 
+/*
+
+获取市场数据：币服务 开始维护 admin服务 缓存中的市场信息。它会调用外部数据源 gmgn，获取关键的市场指标，主要是 current_price_usd（当前美元价格）和 current_market_cap（当前市值）。
+调用排序：币服务 在更新了市场数据后，会调用 admin服务 提供的排序接口，对相关的币进行排名。
+打热点标签：admin服务 完成排序后，币服务 获取排序结果。对于排名前三的币，币服务 会将其 is_show 字段标记为 true。这个标签的含义是“该币种曾经达到过市场排名前三”，是一个重要的荣誉标记。
+进入热数据缓存：任何一个被打上 is_show 标签的币，其完整的币信息都会被 币服务 存入一个专门的“币热数据”缓存中。这个缓存汇集了所有曾经进入过前三名的币。
+*/
+
 func ProcessMessageData(data *model.MessageData) error {
-	if err := validateMessage(data); err != nil {
-		return fmt.Errorf("message validation failed: %w", err)
-	}
-
-	//data.Data.EntitiesExtract.Entities.Tokens
-
 	lr.I().Infof("Processing message: %s, tweet: %s", data.ID, data.Data.TweetID)
-
-	tweetInfo := extractTweetInfo(data)
 
 	entities := analyzeEntities(data)
 
-	if err := storeMessageData(data, tweetInfo, entities); err != nil {
-		return fmt.Errorf("failed to store message data: %w", err)
+	// 触发币热数据处理
+	if err := processCoinHotDataFromETL(data, entities); err != nil {
+		lr.E().Errorf("Failed to process coin hot data from ETL: %v", err)
+		// 币热数据处理失败不影响主流程
+	}
+
+	// 处理情报-币缓存
+	if err := ProcessIntelligenceCoinCache(data); err != nil {
+		lr.E().Errorf("Failed to process intelligence coin cache: %v", err)
+		// 缓存处理失败不影响主流程
 	}
 
 	lr.I().Infof("Message processed successfully: %s", data.ID)
-
-	return nil
-}
-
-func validateMessage(data *model.MessageData) error {
-	if data == nil {
-		return fmt.Errorf("message data is nil")
-	}
-
-	if data.ID == "" {
-		return fmt.Errorf("message ID is required")
-	}
-
-	if data.Data.TweetID == "" {
-		return fmt.Errorf("tweet ID is required")
-	}
-
-	if data.Data.SenderInfo.ScreenName == "" {
-		return fmt.Errorf("sender screen name is required")
-	}
 
 	return nil
 }
@@ -138,5 +129,167 @@ func storeMessageData(data *model.MessageData, tweetInfo map[string]interface{},
 
 	lr.I().Infof("Stored data for message %s:\n%s", data.ID, string(jsonData))
 
+	return nil
+}
+
+// processCoinHotDataFromETL 从ETL数据触发币热数据处理
+func processCoinHotDataFromETL(data *model.MessageData, entities map[string]interface{}) error {
+	// 检查是否有token实体
+	tokens, ok := entities["tokens"].([]string)
+	if !ok || len(tokens) == 0 {
+		return nil // 没有token实体，不需要处理
+	}
+
+	lr.I().Infof("Processing %d tokens from ETL data: %v", len(tokens), tokens)
+
+	// 为每个token创建ETL数据并处理
+	//for _, tokenName := range tokens {
+	//	etlData := &ETLTokenData{
+	//		IntelligenceID:  data.ID,                // 使用消息ID作为情报ID
+	//		EntityID:        utils.GenerateUUIDV7(), // 生成实体ID
+	//		Name:            tokenName,
+	//		Symbol:          strings.ToUpper(tokenName[:3]), // 简单的符号生成
+	//		Standard:        "ERC20",                        // 默认标准
+	//		Decimals:        18,                             // 默认精度
+	//		ContractAddress: "",                             // 暂时为空，后续从搜索中获取
+	//		Logo:            "",                             // 暂时为空，后续从搜索中获取
+	//		ChainID:         "default-chain-id",             // 默认链ID
+	//		ChainName:       "Ethereum",
+	//		ChainSlug:       "eth",
+	//		ChainLogo:       "eth-logo.png",
+	//	}
+	//
+	//	if err := ProcessETLTokenData(etlData); err != nil {
+	//		lr.E().Errorf("Failed to process token %s from ETL: %v", tokenName, err)
+	//		continue
+	//	}
+	//}
+
+	return nil
+}
+
+func processTokenFromETL(tokenName string, data *model.MessageData) error {
+	// 创建或获取情报
+	intelligence, err := createOrGetIntelligenceFromETL(tokenName, data)
+	if err != nil {
+		return fmt.Errorf("failed to create/get intelligence for token %s: %w", tokenName, err)
+	}
+
+	// 创建或获取实体
+	entity, err := createOrGetEntityFromETL(tokenName)
+	if err != nil {
+		return fmt.Errorf("failed to create/get entity for token %s: %w", tokenName, err)
+	}
+
+	// 创建情报实体关联
+	if err := createIntelligenceEntityRelation(intelligence.ID, entity.ID); err != nil {
+		return fmt.Errorf("failed to create intelligence-entity relation: %w", err)
+	}
+
+	// 触发币数据搜索和更新
+	if err := triggerCoinDataSearch(tokenName, entity.ID, intelligence.ID); err != nil {
+		return fmt.Errorf("failed to trigger coin data search: %w", err)
+	}
+
+	return nil
+}
+
+func createOrGetIntelligenceFromETL(tokenName string, data *model.MessageData) (*dto.Intelligence, error) {
+	existingIntelligence, err := findIntelligenceByToken(tokenName)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingIntelligence != nil {
+		// 更新现有情报
+		content := data.Data.Content
+		existingIntelligence.Content = &content
+		existingIntelligence.SourceURL = data.Data.SourceURL
+		existingIntelligence.UpdatedAt = time.Now()
+
+		if err := updateIntelligence(existingIntelligence); err != nil {
+			return nil, err
+		}
+
+		return existingIntelligence, nil
+	}
+
+	// 创建新情报
+	title := fmt.Sprintf("Token Intelligence: %s", tokenName)
+	content := data.Data.Content
+	intelligence := &dto.Intelligence{
+		Title:       &title,
+		Content:     &content,
+		SourceURL:   data.Data.SourceURL,
+		Type:        "token_intelligence",
+		PublishedAt: time.Unix(data.Data.PublishedAt, 0),
+		SourceID:    utils.GenerateUUIDV7(), // 生成一个source_id
+		IsValuable:  false,
+		Score:       0.0,
+	}
+
+	if err := dao.CreateIntelligence(intelligence); err != nil {
+		return nil, err
+	}
+
+	return intelligence, nil
+}
+
+func createOrGetEntityFromETL(tokenName string) (*dto.Entity, error) {
+	// 检查是否已存在实体
+	existingEntity, err := dao.GetEntityBySlugAndType(tokenName, "token")
+	if err != nil {
+		return nil, err
+	}
+
+	if existingEntity != nil {
+		return existingEntity, nil
+	}
+
+	entity := &dto.Entity{
+		Name:   tokenName,
+		Slug:   tokenName,
+		Type:   "token",
+		Source: stringPtr("etl"),
+	}
+
+	if err := createEntity(entity); err != nil {
+		return nil, err
+	}
+
+	return entity, nil
+}
+
+// createIntelligenceEntityRelation 创建情报实体关联
+func createIntelligenceEntityRelation(intelligenceID, entityID string) error {
+	relation := &dto.EntityIntelligence{
+		IntelligenceID: intelligenceID,
+		EntityID:       entityID,
+		Type:           stringPtr("token"),
+	}
+
+	return dao.CreateEntityIntelligence(relation)
+}
+
+// triggerCoinDataSearch 触发币数据搜索
+func triggerCoinDataSearch(tokenName, entityID, intelligenceID string) error {
+	// 直接调用币热数据服务的搜索功能
+	//return SearchCoinDataDirectly(tokenName, entityID, intelligenceID)
+	return nil
+}
+
+// 辅助函数
+func findIntelligenceByToken(tokenName string) (*dto.Intelligence, error) {
+	// TODO: 实现根据token名称查找情报的逻辑
+	return nil, nil
+}
+
+func updateIntelligence(intelligence *dto.Intelligence) error {
+	// TODO: 实现更新情报的逻辑
+	return nil
+}
+
+func createEntity(entity *dto.Entity) error {
+	// TODO: 实现创建实体的逻辑
 	return nil
 }
