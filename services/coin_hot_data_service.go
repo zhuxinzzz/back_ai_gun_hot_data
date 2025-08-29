@@ -93,9 +93,11 @@ func callAdminRankingService(coins []dto.IntelligenceCoinCache) (*dto.AdminRanki
 func processHotDataLabels(rankedCoins []dto.IntelligenceCoinCache) error {
 	var hotDataCoins []dto.CoinHotData
 
-	for _, rankedCoin := range rankedCoins {
-		// 检查是否进入前三名（暂时使用默认逻辑，后续需要从排序服务获取排名）
-		isTopThree := false // TODO: 从排序服务获取实际排名
+	for i, rankedCoin := range rankedCoins {
+		// 根据排序结果确定是否进入前三名
+		// 假设rankedCoins已经按排名排序，前三个是前三名
+		isTopThree := i < 3
+		ranking := i + 1 // 排名从1开始
 
 		// 创建热数据
 		hotData := dto.CoinHotData{
@@ -109,9 +111,9 @@ func processHotDataLabels(rankedCoins []dto.IntelligenceCoinCache) error {
 			Logo:            rankedCoin.Logo,
 			Stats:           rankedCoin.Stats,
 			Chain:           rankedCoin.Chain,
-			IsShow:          isTopThree, // 暂时只有前三名显示
-			Ranking:         0,          // TODO: 从排序服务获取实际排名
-			HighestRanking:  0,          // TODO: 从排序服务获取历史最高排名
+			IsShow:          isTopThree, // 前三名显示
+			Ranking:         ranking,    // 当前排名
+			HighestRanking:  ranking,    // 暂时设为当前排名，后续需要比较历史最高
 			CreatedAt:       rankedCoin.CreatedAt,
 			UpdatedAt:       time.Now(),
 		}
@@ -126,7 +128,6 @@ func processHotDataLabels(rankedCoins []dto.IntelligenceCoinCache) error {
 		// 只有被打上is_show标签的币才进入热数据缓存
 		if hotData.IsShow {
 			hotDataCoins = append(hotDataCoins, hotData)
-			lr.I().Infof("Added coin %s to hot data cache (ranking: %d)", hotData.Name, hotData.Ranking)
 		}
 	}
 

@@ -13,14 +13,6 @@ import (
 	"back_ai_gun_data/utils"
 )
 
-/*
-阶段二：市场数据 enriquecimiento 与首次排名
-获取市场数据：币服务 开始维护 admin服务 缓存中的市场信息。它会调用外部数据源 gmgn，获取关键的市场指标，主要是 current_price_usd（当前美元价格）和 current_market_cap（当前市值）。
-调用排序：币服务 在更新了市场数据后，会调用 admin服务 提供的排序接口，对相关的币进行排名。
-打热点标签：admin服务 完成排序后，币服务 获取排序结果。对于排名前三的币，币服务 会将其 is_show 字段标记为 true。这个标签的含义是“该币种曾经达到过市场排名前三”，是一个重要的荣誉标记。
-进入热数据缓存：任何一个被打上 is_show 标签的币，其完整的币信息都会被 币服务 存入一个专门的“币热数据”缓存中。这个缓存汇集了所有曾经进入过前三名的币。
-*/
-
 func ProcessMessageData(data *model.MessageData) error {
 	entities := analyzeEntities(data)
 
@@ -46,8 +38,40 @@ func maintainAdminMarketData(data *model.MessageData, entities map[string]interf
 }
 
 func processCoinRankingAndHotData(data *model.MessageData, entities map[string]interface{}) error {
-	// TODO: 实现排序和热数据处理逻辑
-	// 这里需要从缓存读取数据，调用排序服务，然后更新热数据缓存
+	// 阶段二：市场数据enriquecimiento与首次排名
+
+	// 1. 更新admin服务缓存中的市场信息
+	if err := remote_service.UpdateAdminMarketData(data.ID); err != nil {
+		lr.E().Errorf("Failed to update admin market data: %v", err)
+		// 继续执行，不中断流程
+	}
+
+	// 2. 从缓存读取最新的币数据
+	cacheData, err := remote_service.ReadIntelligenceCoinCacheFromRedis(data.ID)
+	if err != nil {
+		lr.E().Errorf("Failed to read intelligence coin cache: %v", err)
+		return fmt.Errorf("failed to read intelligence coin cache: %w", err)
+	}
+
+	if cacheData == nil || len(cacheData.Coins) == 0 {
+		lr.I().Infof("No coins found in cache for intelligence %s", data.ID)
+		return nil
+	}
+
+	// 3. 调用admin服务排序接口
+	rankingResponse, err := remote_service.CallAdminRankingService(cacheData.Coins)
+	if err != nil {
+		lr.E().Errorf("Failed to call admin ranking service: %v", err)
+		return fmt.Errorf("failed to call admin ranking service: %w", err)
+	}
+
+	// 4. 处理热点标签并进入热数据缓存
+	if err := ProcessCoinHotData(data.ID, rankingResponse.Data); err != nil {
+		lr.E().Errorf("Failed to process coin hot data: %v", err)
+		return fmt.Errorf("failed to process coin hot data: %w", err)
+	}
+
+	lr.I().Infof("Successfully processed coin ranking and hot data for intelligence %s", data.ID)
 	return nil
 }
 
