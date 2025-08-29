@@ -300,7 +300,7 @@ func updateMarketInfoFromGMGN(coins []dto.IntelligenceCoinCache) error {
 	}
 
 	// 创建token映射，用于快速查找
-	tokenMap := make(map[string]remote.TokenInfo)
+	tokenMap := make(map[string]remote.GmGnToken)
 	for _, token := range tokens {
 		tokenMap[token.Name] = token
 	}

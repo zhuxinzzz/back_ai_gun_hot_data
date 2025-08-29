@@ -58,7 +58,7 @@ func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams)
 	return result, nil
 }
 
-func QueryTokensByName(name string, chain string) ([]remote.TokenInfo, error) {
+func QueryTokensByName(name string, chain string) ([]remote.GmGnToken, error) {
 	params := remote.TokenQueryParams{
 		Q:     name,  // 查询关键字,全称、简称、地址,多个查询用逗号分隔
 		Chain: chain, // 指定链
@@ -72,7 +72,7 @@ func QueryTokensByName(name string, chain string) ([]remote.TokenInfo, error) {
 		return nil, err
 	}
 
-	var allTokens []remote.TokenInfo
+	var allTokens []remote.GmGnToken
 	for _, tokens := range resp.Data {
 		allTokens = append(allTokens, tokens...)
 	}
@@ -80,7 +80,7 @@ func QueryTokensByName(name string, chain string) ([]remote.TokenInfo, error) {
 	return allTokens, nil
 }
 
-func QueryTokensByAddress(address string, chain string) ([]remote.TokenInfo, error) {
+func QueryTokensByAddress(address string, chain string) ([]remote.GmGnToken, error) {
 	params := remote.TokenQueryParams{
 		Q:     address,
 		Chain: chain,
@@ -95,7 +95,7 @@ func QueryTokensByAddress(address string, chain string) ([]remote.TokenInfo, err
 	}
 
 	// 合并所有结果
-	var allTokens []remote.TokenInfo
+	var allTokens []remote.GmGnToken
 	for _, tokens := range resp.Data {
 		allTokens = append(allTokens, tokens...)
 	}

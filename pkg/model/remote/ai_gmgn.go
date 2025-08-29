@@ -1,7 +1,6 @@
 package remote
 
-// 代币数据结构
-type TokenInfo struct {
+type GmGnToken struct {
 	Name       string `json:"name"`
 	Symbol     string `json:"symbol"`
 	Address    string `json:"address"`
@@ -13,14 +12,12 @@ type TokenInfo struct {
 	Decimals   int    `json:"decimals"`
 }
 
-// API响应结构
 type TokenQueryResponse struct {
 	Code    int                    `json:"code"`
 	Message string                 `json:"message"`
-	Data    map[string][]TokenInfo `json:"data"`
+	Data    map[string][]GmGnToken `json:"data"`
 }
 
-// 查询参数结构
 type TokenQueryParams struct {
 	Q     string // 查询关键字，全称、简称、地址，多个查询用逗号分隔
 	Chain string // 指定链
