@@ -17,9 +17,9 @@ func GetRedisConfigFromEnv() RedisConfig {
 	return RedisConfig{
 		Addr: getEnv("REDIS_ADDR", "satoshi8.redis.rds.aliyuncs.com:6379"),
 		//Password:    getEnv("REDIS_PASSWORD", "redisInstance1!"),
-		DB:          getEnvAsInt("REDIS_DB", 0),
+		DB:          getEnvAsInt("REDIS_DB", 15), // 15 is test db.
 		ClusterMode: getEnvAsBool("REDIS_CLUSTER_MODE", false),
-		PoolSize:    getEnvAsInt("REDIS_POOL_SIZE", 15), // 15 is test db.
+		PoolSize:    getEnvAsInt("REDIS_POOL_SIZE", 10),
 	}
 }
 
