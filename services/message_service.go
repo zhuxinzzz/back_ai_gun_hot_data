@@ -139,21 +139,18 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 
 	// 只有新token进入前三名时才更新缓存
 	if hasNewTokenInTop3 {
-		// 构建最终缓存：旧的全部 + 新的前三
-		finalCache := make([]dto_cache.IntelligenceTokenCache, 0, len(tokens)+3)
+		// 构建最终缓存：按照admin排序结果，保留旧的全部 + 新的前三
+		finalCache := make([]dto_cache.IntelligenceTokenCache, 0, len(rankedCoins))
 
-		// 1. 先添加所有旧token
-		finalCache = append(finalCache, tokens...)
-
-		// 2. 添加前三名中的新token（去重）
-		addedNewNames := make(map[string]struct{})
-		for i := 0; i < top3; i++ {
-			token := rankedCoins[i]
-			// 如果是新token且还没添加过
-			if _, exists := oldTokenNames[token.Name]; !exists {
-				if _, added := addedNewNames[token.Name]; !added {
+		// 遍历排序后的结果，按顺序添加
+		for _, token := range rankedCoins {
+			if _, exists := oldTokenNames[token.Name]; exists {
+				// 旧token，直接添加（保持排序后的顺序）
+				finalCache = append(finalCache, token)
+			} else {
+				// 新token，只有在前三名才添加
+				if len(finalCache) < 3 {
 					finalCache = append(finalCache, token)
-					addedNewNames[token.Name] = struct{}{}
 				}
 			}
 		}
@@ -162,7 +159,7 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 			lr.E().Errorf("Failed to write updated token cache: %v", err)
 			// 缓存写入失败不影响后续流程，继续处理热点数据
 		}
-		lr.I().Infof("Updated cache: old tokens (%d) + new top3 tokens (%d) for %s", len(tokens), len(addedNewNames), data.ID)
+		lr.I().Infof("Updated cache with admin ranking order: %d tokens for %s", len(finalCache), data.ID)
 	}
 
 	// 5. 处理热点数据（仅追加新的前三名）
