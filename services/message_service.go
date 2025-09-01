@@ -30,13 +30,7 @@ func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 	return nil
 }
 
-// 过滤支持的链，并按name+network去重
-var supportedChains = map[string]struct{}{
-	"solana":   {},
-	"bsc":      {},
-	"ethereum": {},
-	"base":     {},
-}
+// 使用remote包中的SupportedChains
 
 var top3 = 3
 
@@ -51,92 +45,97 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		return nil
 	}
 
-	existingNames := make(map[string]struct{}, len(cacheTokens))
+	// 直接用已有的token名组装调用remote
+	var searchNames []string
 	for _, t := range cacheTokens {
 		if t.Name != "" {
-			existingNames[t.Name] = struct{}{}
+			searchNames = append(searchNames, t.Name)
 		}
 	}
 
-	// 从消息中提取token名称
-	newNameSet := getTokenNameSet(entities)
-	var missingNames []string
-	for name := range newNameSet {
-		if _, ok := existingNames[name]; !ok {
-			missingNames = append(missingNames, name)
-		}
-	}
-
-	combined := make([]dto_cache.IntelligenceTokenCache, 0, len(cacheTokens)+len(missingNames))
+	combined := make([]dto_cache.IntelligenceTokenCache, 0, len(cacheTokens)+len(searchNames))
 	combined = append(combined, cacheTokens...) // 旧币放在前面以便稳定排序时保序
 
-	// 2.3 为缺失的名称批量查询GMGN数据，尽量补齐市值
-	if len(missingNames) > 0 {
+	// 2.3 为所有币名称批量查询GMGN数据，发现新币并补齐市值
+	if len(searchNames) > 0 {
 		// 批量查询，limit 按名称数目放大
-		namesStr := strings.Join(missingNames, ",")
-		limit := len(missingNames) * 3
+		namesStr := strings.Join(searchNames, ",")
+		limit := len(searchNames) * 3
 		if limit < 10 {
 			limit = 10
 		}
+
 		remoteTokens, qErr := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, "", limit)
-		if qErr != nil {
-			lr.E().Errorf("Batch GMGN query failed for new cacheTokens: %v", qErr)
-			remoteTokens = nil
-		}
-
-		gmgnByNameAndNetwork := make(map[string]remote.GmGnToken)
-		for _, t := range remoteTokens {
-			// 只保留支持的链
-			if _, supported := supportedChains[strings.ToLower(t.Network)]; supported {
-				key := t.Name + ":" + strings.ToLower(t.Network)
-				gmgnByNameAndNetwork[key] = t
-			}
-		}
-
-		// 2.4 生成新增token占位并尽量补齐市值，确保有稳定的唯一ID
-		for _, name := range missingNames {
-			now := time.Now()
-			newToken := dto_cache.IntelligenceTokenCache{
-				ID: utils.GenerateUUIDV7(),
-				//EntityID: utils.GenerateUUIDV7(),
-				Name: name,
-				//Symbol:    generateSymbol(name),
-				Standard: stringPtr("ERC20"),
-				//Decimals:  18,
-				Stats:     dto_cache.CoinMarketStats{},
-				Chain:     dto_cache.ChainInfo{},
-				CreatedAt: dto_cache.CustomTime{Time: now},
-				UpdatedAt: dto_cache.CustomTime{Time: now},
+		if qErr == nil {
+			searchResultsByName := make(map[string][]remote.GmGnToken)
+			for _, t := range remoteTokens {
+				if t.IsSupportedChain() {
+					searchResultsByName[t.Name] = append(searchResultsByName[t.Name], t)
+				}
 			}
 
-			// 为每个name查找所有可能的网络结果，优先选择市值最高的
-			var bestToken *remote.GmGnToken
-			var bestMarketCap float64
+			// 从remote搜索结果中发现新币（不在缓存中的币）
+			existingNames := make(map[string]struct{}, len(cacheTokens))
+			for _, t := range cacheTokens {
+				if t.Name != "" {
+					existingNames[t.Name] = struct{}{}
+				}
+			}
 
-			for key, token := range gmgnByNameAndNetwork {
-				if strings.HasPrefix(key, name+":") {
+			var newTokenNames []string
+			for name := range searchResultsByName {
+				if _, ok := existingNames[name]; !ok {
+					newTokenNames = append(newTokenNames, name)
+				}
+			}
+
+			for _, name := range newTokenNames {
+				now := time.Now()
+				newToken := dto_cache.IntelligenceTokenCache{
+					ID:        utils.GenerateUUIDV7(),
+					Name:      name,
+					Standard:  stringPtr("ERC20"),
+					Stats:     dto_cache.CoinMarketStats{},
+					Chain:     dto_cache.ChainInfo{},
+					CreatedAt: dto_cache.CustomTime{Time: now},
+					UpdatedAt: dto_cache.CustomTime{Time: now},
+				}
+
+				// 为每个name查找所有可能的网络结果，优先选择市值最高的
+				var bestToken *remote.GmGnToken
+				var bestMarketCap float64
+
+				tokens, exists := searchResultsByName[name]
+				if !exists {
+					combined = append(combined, newToken)
+					continue
+				}
+
+				for _, token := range tokens {
 					marketCap, _ := strconv.ParseFloat(token.MarketCap, 64)
 					if bestToken == nil || marketCap > bestMarketCap {
 						bestToken = &token
 						bestMarketCap = marketCap
 					}
 				}
-			}
 
-			if bestToken != nil {
+				if bestToken == nil {
+					combined = append(combined, newToken)
+					continue
+				}
+
+				// 填充最佳token的数据
 				newToken.Stats.CurrentPriceUSD = bestToken.PriceUSD
 				newToken.Stats.CurrentMarketCap = bestToken.MarketCap
-				// 直接使用真实数据作为预警值，确保新token公平参与排序
 				newToken.Stats.WarningPriceUSD = bestToken.PriceUSD
 				newToken.Stats.WarningMarketCap = bestToken.MarketCap
-				if newToken.ContractAddress == "" {
-					newToken.ContractAddress = bestToken.Address
-				}
-				// 设置链信息
+				newToken.ContractAddress = bestToken.Address
 				newToken.Chain.Slug = strings.ToLower(bestToken.Network)
-			}
 
-			combined = append(combined, newToken)
+				combined = append(combined, newToken)
+			}
+		} else {
+			lr.E().Errorf("Batch GMGN query failed for new cacheTokens: %v", qErr)
 		}
 	}
 
@@ -249,8 +248,6 @@ func triggerCoinDataSearch(tokenName, entityID, intelligenceID string) error {
 	//return SearchCoinDataDirectly(tokenName, entityID, intelligenceID)
 	return nil
 }
-
-// 辅助函数
 
 // getTokenNameSet 从消息数据中提取token名集合的辅助函数
 // 从消息的实体提取结果中获取所有token名称，用于市场数据处理和缓存维护

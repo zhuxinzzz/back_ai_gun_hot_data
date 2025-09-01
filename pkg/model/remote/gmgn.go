@@ -1,5 +1,7 @@
 package remote
 
+import "strings"
+
 type GmGnToken struct {
 	Name       string `json:"name"`
 	Symbol     string `json:"symbol"`
@@ -23,4 +25,18 @@ type TokenQueryParams struct {
 	Chain string // 指定链
 	Limit int    // 指定数量，默认10
 	Fuzzy int    // 是否为模糊匹配，1: 是，0: 否，默认1
+}
+
+// 支持的链
+var SupportedChains = map[string]struct{}{
+	"solana":   {},
+	"bsc":      {},
+	"ethereum": {},
+	"base":     {},
+}
+
+// IsSupportedChain 判断是否支持该链
+func (t *GmGnToken) IsSupportedChain() bool {
+	_, supported := SupportedChains[strings.ToLower(t.Network)]
+	return supported
 }
