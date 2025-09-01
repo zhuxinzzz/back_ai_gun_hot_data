@@ -29,14 +29,14 @@ func UpdateMarketData(ctx context.Context, intelligenceID string) error {
 	// 收集所有需要查询的币种信息
 	var queryParams []struct {
 		index int
-		token dto_cache.IntelligenceTokenCache
+		token dto_cache.IntelligenceToken
 	}
 
 	for i, token := range cacheData {
 		if token.Name != "" {
 			queryParams = append(queryParams, struct {
 				index int
-				token dto_cache.IntelligenceTokenCache
+				token dto_cache.IntelligenceToken
 			}{i, token})
 		}
 	}

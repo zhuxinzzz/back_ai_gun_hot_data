@@ -19,8 +19,7 @@ func getAdminHost() string {
 	return "http://192.168.4.64:8001"
 }
 
-// ConvertCacheToSortRequest 将 []dto_cache.IntelligenceTokenCache 转换为 dto.SortRequest
-func ConvertCacheToSortRequest(intelligenceID string, cacheTokens []dto_cache.IntelligenceTokenCache) dto.SortRequest {
+func ConvertCacheToSortRequest(intelligenceID string, cacheTokens []dto_cache.IntelligenceToken) dto.SortRequest {
 	var tokenList []dto.TokenReq
 	for _, cache := range cacheTokens {
 		token := dto.TokenReq{
@@ -58,9 +57,9 @@ func ConvertCacheToSortRequest(intelligenceID string, cacheTokens []dto_cache.In
 	}
 }
 
-// ConvertSortResponseToCache 将 []dto.IntelligenceTokenCacheResp 转换为 []dto_cache.IntelligenceTokenCache
-func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenCacheResp) []dto_cache.IntelligenceTokenCache {
-	var result []dto_cache.IntelligenceTokenCache
+// ConvertSortResponseToCache 将 []dto.IntelligenceTokenCacheResp 转换为 []dto_cache.IntelligenceToken
+func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenCacheResp) []dto_cache.IntelligenceToken {
+	var result []dto_cache.IntelligenceToken
 	for _, dtoToken := range dtoTokens {
 		// 解析时间字符串
 		var createdAt, updatedAt dto_cache.CustomTime
@@ -75,7 +74,7 @@ func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenCacheResp) []dt
 			}
 		}
 
-		cache := dto_cache.IntelligenceTokenCache{
+		cache := dto_cache.IntelligenceToken{
 			ID:              dtoToken.ID,
 			EntityID:        dtoToken.EntityID,
 			Name:            dtoToken.Name,
@@ -130,7 +129,7 @@ func CallAdminRanking(req dto.SortRequest) ([]dto.IntelligenceTokenCacheResp, er
 	return tokenList, nil
 }
 
-func CallAdminRankingWithCache(intelligenceID string, cacheTokens []dto_cache.IntelligenceTokenCache) ([]dto_cache.IntelligenceTokenCache, error) {
+func CallAdminRankingWithCache(intelligenceID string, cacheTokens []dto_cache.IntelligenceToken) ([]dto_cache.IntelligenceToken, error) {
 	req := ConvertCacheToSortRequest(intelligenceID, cacheTokens)
 
 	resp, err := CallAdminRanking(req)

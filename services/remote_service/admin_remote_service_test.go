@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var cacheTokens = []dto_cache.IntelligenceTokenCache{
+var cacheTokens = []dto_cache.IntelligenceToken{
 	{
 		ID:       "1",
 		Name:     "Bitcoin",

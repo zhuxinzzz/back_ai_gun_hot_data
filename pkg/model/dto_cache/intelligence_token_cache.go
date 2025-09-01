@@ -9,8 +9,8 @@ import (
 	"back_ai_gun_data/pkg/model/remote"
 )
 
-// IntelligenceTokenCache 情报-币缓存模型
-type IntelligenceTokenCache struct {
+// IntelligenceToken 情报-币缓存模型
+type IntelligenceToken struct {
 	ID              string          `json:"id"`               // project chain data id
 	EntityID        string          `json:"entity_id"`        // 实体ID
 	Name            string          `json:"name"`             // 币名称
@@ -74,7 +74,7 @@ type ChainInfo struct {
 
 // GetUniqueKey 获取唯一标识符，用于map查找
 // 格式：name:contract_address:chain_slug
-func (c *IntelligenceTokenCache) GetUniqueKey() string {
+func (c *IntelligenceToken) GetUniqueKey() string {
 	if c == nil {
 		return ""
 	}
@@ -85,7 +85,7 @@ func (c *IntelligenceTokenCache) GetUniqueKey() string {
 
 // Equals 比较两个IntelligenceTokenCache是否相等
 // 使用name、contract_address、chain.slug三个字段进行比较
-func (c *IntelligenceTokenCache) Equals(other *IntelligenceTokenCache) bool {
+func (c *IntelligenceToken) Equals(other *IntelligenceToken) bool {
 	if c == nil || other == nil {
 		return c == other
 	}
@@ -95,7 +95,7 @@ func (c *IntelligenceTokenCache) Equals(other *IntelligenceTokenCache) bool {
 
 // IsSameToken 比较当前token与远程token是否为同一币种
 // 使用name、contract_address、chain.slug三个字段进行比较
-func (c *IntelligenceTokenCache) IsSameToken(remoteToken remote.GmGnToken) bool {
+func (c *IntelligenceToken) IsSameToken(remoteToken remote.GmGnToken) bool {
 	if c == nil {
 		return false
 	}
@@ -122,7 +122,7 @@ func (c *IntelligenceTokenCache) IsSameToken(remoteToken remote.GmGnToken) bool 
 
 // FindMatchingToken 在远程token列表中查找匹配的token
 // 优先使用合约地址匹配，失败则使用名称匹配
-func (c *IntelligenceTokenCache) FindMatchingToken(remoteTokens []remote.GmGnToken) *remote.GmGnToken {
+func (c *IntelligenceToken) FindMatchingToken(remoteTokens []remote.GmGnToken) *remote.GmGnToken {
 	if c == nil {
 		return nil
 	}
@@ -146,7 +146,7 @@ func (c *IntelligenceTokenCache) FindMatchingToken(remoteTokens []remote.GmGnTok
 	return nil
 }
 
-func (c *IntelligenceTokenCache) ToShowedToken() dto.ShowedToken {
+func (c *IntelligenceToken) ToShowedToken() dto.ShowedToken {
 	return dto.ShowedToken{
 		Slug:             c.Name,
 		ContractAddress:  c.ContractAddress,

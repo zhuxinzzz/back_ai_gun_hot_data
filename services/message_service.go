@@ -72,7 +72,6 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 			}
 
 			detectionCount++
-			//lr.I().Infof("Detection %d/%d completed for intelligence %s", detectionCount, maxDetections, data.ID)
 
 			// 如果不是最后一次检测，等待下次检测
 			if detectionCount < maxDetections {
@@ -81,16 +80,13 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		}
 	}
 
-	//lr.I().Infof("Completed %d detections for intelligence %s", maxDetections, data.ID)
 	return nil
 }
 
-// executeDetectionAndProcessing 执行一次检测和处理
-func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, searchNames []string, cacheTokens []dto_cache.IntelligenceTokenCache) error {
-	combined := make([]dto_cache.IntelligenceTokenCache, 0, len(cacheTokens)+len(searchNames))
+func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, searchNames []string, cacheTokens []dto_cache.IntelligenceToken) error {
+	combined := make([]dto_cache.IntelligenceToken, 0, len(cacheTokens)+len(searchNames))
 	combined = append(combined, cacheTokens...) // 旧币放在前面以便稳定排序时保序
 
-	// 2.3 为所有币名称批量查询GMGN数据，发现新币并补齐市值
 	if len(searchNames) > 0 {
 		remoteTokens, qErr := queryTokensByName(ctx, searchNames)
 		if qErr == nil {
@@ -102,7 +98,7 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 			}
 
 			// 从remote搜索结果中发现新币（不在缓存中的币）
-			var newTokens []dto_cache.IntelligenceTokenCache
+			var newTokens []dto_cache.IntelligenceToken
 			for _, tokens := range searchResultsByName {
 				for _, token := range tokens {
 					// 检查是否已存在相同的币种
@@ -159,33 +155,32 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 		}
 	}
 
-	// 3. 调用admin服务进行稳定排序，返回排序后的切片
-	rankedCoins, err := remote_service.CallAdminRankingWithCache(intelligenceID, combined)
+	rankedTokens, err := remote_service.CallAdminRankingWithCache(intelligenceID, combined)
 	if err != nil {
 		lr.E().Error(err)
 		return err
 	}
 
 	hasNewTokenInTop3 := false
-	if len(rankedCoins) < top3 {
-		top3 = len(rankedCoins)
+	if len(rankedTokens) < top3 {
+		top3 = len(rankedTokens)
 	}
-	oldTokenKeys := make(map[string]dto_cache.IntelligenceTokenCache, len(cacheTokens))
+	oldTokenKeys := make(map[string]dto_cache.IntelligenceToken, len(cacheTokens))
 	for _, t := range cacheTokens {
 		oldTokenKeys[t.GetUniqueKey()] = t
 	}
 	for i := 0; i < top3; i++ {
-		if _, exists := oldTokenKeys[rankedCoins[i].GetUniqueKey()]; !exists {
+		if _, exists := oldTokenKeys[rankedTokens[i].GetUniqueKey()]; !exists {
 			hasNewTokenInTop3 = true
 			break
 		}
 	}
 
 	if hasNewTokenInTop3 {
-		finalCache := make([]dto_cache.IntelligenceTokenCache, 0, len(rankedCoins))
+		finalCache := make([]dto_cache.IntelligenceToken, 0, len(rankedTokens))
 
 		// 遍历排序后的结果，按顺序添加
-		for _, token := range rankedCoins {
+		for _, token := range rankedTokens {
 			if _, exists := oldTokenKeys[token.GetUniqueKey()]; exists {
 				finalCache = append(finalCache, token)
 			} else {
@@ -325,8 +320,8 @@ var (
 
 // toIntelligenceTokenCache 将GmGnToken转换为IntelligenceTokenCache
 // 不足的字段通过参数传入
-func toIntelligenceTokenCache(token remote.GmGnToken, standard string) dto_cache.IntelligenceTokenCache {
-	return dto_cache.IntelligenceTokenCache{
+func toIntelligenceTokenCache(token remote.GmGnToken, standard string) dto_cache.IntelligenceToken {
+	return dto_cache.IntelligenceToken{
 		Name:            token.Name,
 		Symbol:          token.Symbol,
 		Standard:        &standard,

@@ -77,7 +77,7 @@ const (
 //	"HyperEVM":                {},
 //}
 
-func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
+func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.IntelligenceToken, error) {
 	key := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
 	dataStr, err := cache.Get(ctx, key)
@@ -85,13 +85,13 @@ func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.Int
 		// 如果缓存不存在，返回空数据而不是错误
 		if err.Error() == "redis: nil" {
 			lr.E().Error(err)
-			return []dto_cache.IntelligenceTokenCache{}, nil
+			return []dto_cache.IntelligenceToken{}, nil
 		}
 		return nil, err
 	}
 
 	// 直接解析为币数组
-	var coins []dto_cache.IntelligenceTokenCache
+	var coins []dto_cache.IntelligenceToken
 	if err := json.Unmarshal([]byte(dataStr), &coins); err != nil {
 		lr.E().Error(err)
 		return nil, err
@@ -100,7 +100,7 @@ func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.Int
 	return coins, nil
 }
 
-func writeTokenCache(ctx context.Context, intelligenceID string, coins []dto_cache.IntelligenceTokenCache) error {
+func writeTokenCache(ctx context.Context, intelligenceID string, coins []dto_cache.IntelligenceToken) error {
 	key := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
 	dataBytes, err := json.Marshal(coins)
