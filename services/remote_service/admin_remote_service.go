@@ -1,53 +1,61 @@
 package remote_service
 
 import (
+	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model/dto_cache"
-	"sort"
-	"strconv"
-	"time"
+	"back_ai_gun_data/pkg/model/remote"
+	"encoding/json"
+	"fmt"
 )
 
-// CallAdminRanking 对代币集合进行排序并返回排序后的结果（按市值降序）
+const (
+	AdminRankingURL = "/api/v1/sort"
+)
+
+func getAdminHost() string {
+	return "http://192.168.4.64:8001"
+}
+
 func CallAdminRanking(coins []dto_cache.IntelligenceTokenCache) ([]dto_cache.IntelligenceTokenCache, error) {
-	// 空输入直接返回空输出
-	if len(coins) == 0 {
-		return []dto_cache.IntelligenceTokenCache{}, nil
+	requestData := map[string]interface{}{
+		"tokens": coins,
 	}
 
-	// 复制一份数据进行排序，避免修改原数据
-	rankedCoins := make([]dto_cache.IntelligenceTokenCache, len(coins))
-	copy(rankedCoins, coins)
+	resp, err := Cli().R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(requestData).
+		Post(getAdminHost() + AdminRankingURL)
+	if err != nil {
+		lr.E().Error(err)
+		return nil, err
+	}
+	if resp.StatusCode() != 200 {
+		lr.E().Errorf("Admin ranking API returned status %d: %s", resp.StatusCode(), resp.String())
+		return nil, fmt.Errorf("admin ranking API error: status %d", resp.StatusCode())
+	}
 
-	// 按市值降序排序（稳定排序，保证相同关键值时保留原相对次序）
-	// 优先使用current_market_cap，如果为0则使用warning_market_cap
-	sort.SliceStable(rankedCoins, func(i, j int) bool {
-		// 获取i的市值
-		iMarketCap := rankedCoins[i].Stats.CurrentMarketCap
-		if iMarketCap == "0" || iMarketCap == "" {
-			iMarketCap = rankedCoins[i].Stats.WarningMarketCap
-		}
+	var response remote.AdminRankingResponse
+	if err := json.Unmarshal(resp.Body(), &response); err != nil {
+		lr.E().Errorf("Failed to unmarshal admin ranking response: %v", err)
+		return nil, err
+	}
+	if response.Code != 0 {
+		lr.E().Errorf("Admin ranking API error: %s", response.Message)
+		return nil, fmt.Errorf("admin ranking API error: %s", response.Message)
+	}
 
-		// 获取j的市值
-		jMarketCap := rankedCoins[j].Stats.CurrentMarketCap
-		if jMarketCap == "0" || jMarketCap == "" {
-			jMarketCap = rankedCoins[j].Stats.WarningMarketCap
-		}
+	// 将interface{}转换为具体类型
+	dataBytes, err := json.Marshal(response.Data)
+	if err != nil {
+		lr.E().Errorf("Failed to marshal response data: %v", err)
+		return nil, err
+	}
 
-		// 转换为float进行比较
-		iVal, err1 := strconv.ParseFloat(iMarketCap, 64)
-		jVal, err2 := strconv.ParseFloat(jMarketCap, 64)
+	var tokens []dto_cache.IntelligenceTokenCache
+	if err := json.Unmarshal(dataBytes, &tokens); err != nil {
+		lr.E().Errorf("Failed to unmarshal tokens: %v", err)
+		return nil, err
+	}
 
-		// 如果解析失败，按字符串比较
-		if err1 != nil || err2 != nil {
-			return iMarketCap > jMarketCap
-		}
-
-		// 按数值降序排列
-		return iVal > jVal
-	})
-
-	// 模拟网络延迟
-	time.Sleep(10 * time.Millisecond)
-
-	return rankedCoins, nil
+	return tokens, nil
 }
