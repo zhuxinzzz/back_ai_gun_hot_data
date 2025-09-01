@@ -35,8 +35,13 @@ func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 
 var top3 = 3
 
+const (
+	detectionInterval = 30 * time.Second // 30秒检测间隔
+	maxDetections     = 10               // 最多检测10次
+)
+
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
-	time.Sleep(time.Second * 30)
+	time.Sleep(detectionInterval)
 
 	cacheTokens, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {
@@ -56,9 +61,35 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		}
 	}
 
-	// 启动定时检测任务（每次处理都启动，确保不遗漏新币）
-	go startTokenDetectionTask(ctx, data.ID, searchNames)
+	// 执行10次定时检测
+	for detectionCount := 0; detectionCount < maxDetections; detectionCount++ {
+		select {
+		case <-ctx.Done():
+			lr.I().Infof("Context cancelled, stopping detection for intelligence %s", data.ID)
+			return nil
+		default:
+			// 执行一次检测和处理
+			if err := executeDetectionAndProcessing(ctx, data.ID, searchNames, cacheTokens); err != nil {
+				lr.E().Errorf("Detection %d failed: %v", detectionCount+1, err)
+				// 继续下一次检测，不中断流程
+			}
 
+			detectionCount++
+			lr.I().Infof("Detection %d/%d completed for intelligence %s", detectionCount, maxDetections, data.ID)
+
+			// 如果不是最后一次检测，等待下次检测
+			if detectionCount < maxDetections {
+				time.Sleep(detectionInterval)
+			}
+		}
+	}
+
+	lr.I().Infof("Completed %d detections for intelligence %s", maxDetections, data.ID)
+	return nil
+}
+
+// executeDetectionAndProcessing 执行一次检测和处理
+func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, searchNames []string, cacheTokens []dto_cache.IntelligenceTokenCache) error {
 	combined := make([]dto_cache.IntelligenceTokenCache, 0, len(cacheTokens)+len(searchNames))
 	combined = append(combined, cacheTokens...) // 旧币放在前面以便稳定排序时保序
 
@@ -167,11 +198,17 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 			}
 		}
 
-		if err := writeTokenCache(ctx, data.ID, finalCache); err != nil {
+		if err := writeTokenCache(ctx, intelligenceID, finalCache); err != nil {
 			lr.E().Error(err)
 			// 缓存写入失败不影响后续流程，继续处理热点数据
 		}
 	}
+
+	if err := ProcessCoinHotData(intelligenceID, rankedCoins); err != nil {
+		lr.E().Error(err)
+		return err
+	}
+
 	return nil
 }
 
