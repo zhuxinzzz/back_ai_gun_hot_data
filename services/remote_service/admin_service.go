@@ -125,7 +125,7 @@ func UpdateAdminMarketData(intelligenceID string) error {
 			if matchedToken != nil {
 				cacheData[index].Stats.CurrentPriceUSD = matchedToken.PriceUSD
 				cacheData[index].Stats.CurrentMarketCap = matchedToken.MarketCap
-				cacheData[index].UpdatedAt = time.Now()
+				cacheData[index].UpdatedAt.Time = time.Now()
 
 				// 计算预警涨幅：当前市值 ÷ 预警市值
 				if matchedToken.MarketCap != "0" && coin.Stats.WarningMarketCap != "0" {

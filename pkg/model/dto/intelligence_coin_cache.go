@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -16,8 +18,38 @@ type IntelligenceCoinCache struct {
 	Logo            string          `json:"logo"`             // 图标URL，转冷时到s3
 	Stats           CoinMarketStats `json:"stats"`            // 市场信息
 	Chain           ChainInfo       `json:"chain"`            // 链信息，不更新
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
+	CreatedAt       CustomTime      `json:"created_at"`
+	UpdatedAt       CustomTime      `json:"updated_at"`
+}
+
+type CustomTime struct {
+	time.Time
+}
+
+func (ct *CustomTime) UnmarshalJSON(b []byte) error {
+	timeStr := strings.Trim(string(b), `"`)
+
+	formats := []string{
+		"2006-01-02T15:04:05.000",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+	}
+
+	for _, format := range formats {
+		t, err := time.Parse(format, timeStr)
+		if err != nil {
+			continue
+		}
+
+		ct.Time = t
+		return nil
+	}
+
+	return fmt.Errorf("cannot parse time: %s", timeStr)
+}
+
+func (ct *CustomTime) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + ct.Time.Format("2006-01-02T15:04:05.000") + `"`), nil
 }
 
 // CoinMarketStats 币市场统计信息

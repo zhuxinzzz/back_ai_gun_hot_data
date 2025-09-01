@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"unsafe"
 
 	"github.com/google/uuid"
 
@@ -49,4 +50,11 @@ func GenerateUUIDV7() string {
 		return uuid.New().String()
 	}
 	return id.String()
+}
+func string2bytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
+func bytes2string(b []byte) string {
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }
