@@ -8,11 +8,11 @@ import (
 	"back_ai_gun_data/pkg/model/dto_cache"
 	"back_ai_gun_data/pkg/model/remote"
 	"back_ai_gun_data/services/remote_service"
-	"back_ai_gun_data/utils"
 	"context"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,28 +26,29 @@ func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 	}
 
 	if err := processRankingAndHotData(ctx, data, entities); err != nil {
-		lr.E().Errorf("Coin ranking failed: %v", err)
+		lr.E().Error(err)
+		return err
 	}
 
 	return nil
 }
 
-// 使用remote包中的SupportedChains
-
 var top3 = 3
 
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
+	time.Sleep(time.Second * 30)
+
 	cacheTokens, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {
-		lr.E().Errorf("Failed to read intelligence token cache: %v", err)
-		return fmt.Errorf("failed to read intelligence token cache: %w", err)
+		lr.E().Error(err)
+		return err
 	}
 	if len(cacheTokens) == 0 {
 		lr.I().Infof("No cacheTokens found in cache for intelligence %s", data.ID)
 		return nil
 	}
 
-	// 直接用已有的token名组装调用remote
+	// 构建搜索名称列表
 	var searchNames []string
 	for _, t := range cacheTokens {
 		if t.Name != "" {
@@ -55,19 +56,15 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		}
 	}
 
+	// 启动定时检测任务（每次处理都启动，确保不遗漏新币）
+	go startTokenDetectionTask(ctx, data.ID, searchNames)
+
 	combined := make([]dto_cache.IntelligenceTokenCache, 0, len(cacheTokens)+len(searchNames))
 	combined = append(combined, cacheTokens...) // 旧币放在前面以便稳定排序时保序
 
 	// 2.3 为所有币名称批量查询GMGN数据，发现新币并补齐市值
 	if len(searchNames) > 0 {
-		// 批量查询，limit 按名称数目放大
-		namesStr := strings.Join(searchNames, ",")
-		limit := len(searchNames) * 3
-		if limit < 10 {
-			limit = 10
-		}
-
-		remoteTokens, qErr := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, "", limit)
+		remoteTokens, qErr := queryTokensByName(ctx, searchNames)
 		if qErr == nil {
 			searchResultsByName := make(map[string][]remote.GmGnToken)
 			for _, t := range remoteTokens {
@@ -77,75 +74,68 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 			}
 
 			// 从remote搜索结果中发现新币（不在缓存中的币）
-			existingNames := make(map[string]struct{}, len(cacheTokens))
-			for _, t := range cacheTokens {
-				if t.Name != "" {
-					existingNames[t.Name] = struct{}{}
+			var newTokens []dto_cache.IntelligenceTokenCache
+			for _, tokens := range searchResultsByName {
+				for _, token := range tokens {
+					// 检查是否已存在相同的币种
+					isNewToken := true
+					for _, existingToken := range cacheTokens {
+						if existingToken.IsSameToken(token) {
+							isNewToken = false
+							break
+						}
+					}
+
+					if isNewToken {
+						newToken := toIntelligenceTokenCache(token, "ERC20")
+						newTokens = append(newTokens, newToken)
+					}
 				}
 			}
 
-			var newTokenNames []string
-			for name := range searchResultsByName {
-				if _, ok := existingNames[name]; !ok {
-					newTokenNames = append(newTokenNames, name)
-				}
-			}
-
-			for _, name := range newTokenNames {
-				now := time.Now()
-				newToken := dto_cache.IntelligenceTokenCache{
-					ID:        utils.GenerateUUIDV7(),
-					Name:      name,
-					Standard:  stringPtr("ERC20"),
-					Stats:     dto_cache.CoinMarketStats{},
-					Chain:     dto_cache.ChainInfo{},
-					CreatedAt: dto_cache.CustomTime{Time: now},
-					UpdatedAt: dto_cache.CustomTime{Time: now},
-				}
-
-				// 为每个name查找所有可能的网络结果，优先选择市值最高的
-				var bestToken *remote.GmGnToken
-				var bestMarketCap float64
-
-				tokens, exists := searchResultsByName[name]
+			for i := range newTokens {
+				tokens, exists := searchResultsByName[newTokens[i].Name]
 				if !exists {
-					combined = append(combined, newToken)
+					combined = append(combined, newTokens[i])
 					continue
 				}
 
+				// 选择市值最高的token
+				var bestToken *remote.GmGnToken
+				var bestMarketCap float64
 				for _, token := range tokens {
-					marketCap, _ := strconv.ParseFloat(token.MarketCap, 64)
-					if bestToken == nil || marketCap > bestMarketCap {
-						bestToken = &token
-						bestMarketCap = marketCap
+					if token.Name == newTokens[i].Name &&
+						strings.EqualFold(token.Address, newTokens[i].ContractAddress) &&
+						strings.EqualFold(token.Network, newTokens[i].Chain.Slug) {
+						marketCap, _ := strconv.ParseFloat(token.MarketCap, 64)
+						if bestToken == nil || marketCap > bestMarketCap {
+							bestToken = &token
+							bestMarketCap = marketCap
+						}
 					}
 				}
 
-				if bestToken == nil {
-					combined = append(combined, newToken)
-					continue
+				if bestToken != nil {
+					// 填充市场数据
+					newTokens[i].Stats.CurrentPriceUSD = bestToken.PriceUSD
+					newTokens[i].Stats.CurrentMarketCap = bestToken.MarketCap
+					newTokens[i].Stats.WarningPriceUSD = bestToken.PriceUSD
+					newTokens[i].Stats.WarningMarketCap = bestToken.MarketCap
 				}
 
-				// 填充最佳token的数据
-				newToken.Stats.CurrentPriceUSD = bestToken.PriceUSD
-				newToken.Stats.CurrentMarketCap = bestToken.MarketCap
-				newToken.Stats.WarningPriceUSD = bestToken.PriceUSD
-				newToken.Stats.WarningMarketCap = bestToken.MarketCap
-				newToken.ContractAddress = bestToken.Address
-				newToken.Chain.Slug = strings.ToLower(bestToken.Network)
-
-				combined = append(combined, newToken)
+				combined = append(combined, newTokens[i])
 			}
 		} else {
-			lr.E().Errorf("Batch GMGN query failed for new cacheTokens: %v", qErr)
+			lr.E().Error(qErr)
+			return qErr
 		}
 	}
 
 	// 3. 调用admin服务进行稳定排序，返回排序后的切片
 	rankedCoins, err := remote_service.CallAdminRanking(combined)
 	if err != nil {
-		lr.E().Errorf("Failed to call admin ranking service: %v", err)
-		return fmt.Errorf("failed to call admin ranking service: %w", err)
+		lr.E().Error(err)
+		return err
 	}
 
 	hasNewTokenInTop3 := false
@@ -164,7 +154,6 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 	}
 
 	if hasNewTokenInTop3 {
-		// 构建最终缓存：按照admin排序结果，保留旧的全部 + 新的前三
 		finalCache := make([]dto_cache.IntelligenceTokenCache, 0, len(rankedCoins))
 
 		// 遍历排序后的结果，按顺序添加
@@ -179,18 +168,164 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		}
 
 		if err := writeTokenCache(ctx, data.ID, finalCache); err != nil {
-			lr.E().Errorf("Failed to write updated token cache: %v", err)
+			lr.E().Error(err)
 			// 缓存写入失败不影响后续流程，继续处理热点数据
 		}
 	}
+	return nil
+}
 
-	if err := ProcessCoinHotData(data.ID, rankedCoins); err != nil {
-		lr.E().Errorf("Failed to process token hot data: %v", err)
-		return fmt.Errorf("failed to process token hot data: %w", err)
+// startTokenDetectionTask 启动定时检测新币任务
+func startTokenDetectionTask(ctx context.Context, intelligenceID string, searchNames []string) {
+	const (
+		detectionInterval = 30 * time.Second // 30秒检测间隔
+		maxDetections     = 10               // 最多检测10次
+		maxRetries        = 9                // 最多重试9次
+	)
+
+	// 使用context控制任务生命周期
+	taskCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// 防止重复启动的标记
+	taskKey := fmt.Sprintf("token_detection_%s", intelligenceID)
+	if isTaskRunning(taskKey) {
+		lr.I().Infof("Token detection task already running for intelligence %s", intelligenceID)
+		return
+	}
+	setTaskRunning(taskKey, true)
+	defer setTaskRunning(taskKey, false)
+
+	detectionCount := 0
+	retryCount := 0
+
+	for detectionCount < maxDetections {
+		select {
+		case <-ctx.Done():
+			lr.I().Infof("Context cancelled, stopping token detection for intelligence %s", intelligenceID)
+			return
+		case <-taskCtx.Done():
+			lr.I().Infof("Task cancelled, stopping token detection for intelligence %s", intelligenceID)
+			return
+		default:
+			// 执行检测
+			if hasNewTokens := detectNewTokens(ctx, intelligenceID, searchNames); hasNewTokens {
+				lr.I().Infof("Found new tokens in detection %d for intelligence %s", detectionCount+1, intelligenceID)
+				// 发现新币继续检测，不停止任务
+			} else {
+				lr.I().Infof("No new tokens found in detection %d for intelligence %s", detectionCount+1, intelligenceID)
+			}
+
+			detectionCount++
+			lr.I().Infof("Detection %d/%d completed for intelligence %s", detectionCount, maxDetections, intelligenceID)
+
+			// 如果10次检测完成，开始重试流程
+			if detectionCount >= maxDetections && retryCount < maxRetries {
+				retryCount++
+				detectionCount = 0 // 重置检测计数
+				lr.I().Infof("Starting retry %d/%d for intelligence %s", retryCount, maxRetries, intelligenceID)
+			}
+
+			// 等待下次检测
+			time.Sleep(detectionInterval)
+		}
 	}
 
-	lr.I().Infof("Successfully processed token ranking, cache update and hot data for intelligence %s", data.ID)
-	return nil
+	lr.I().Infof("Token detection task completed for intelligence %s after %d detections and %d retries", intelligenceID, detectionCount, retryCount)
+}
+
+// queryTokensByName 查询GMGN数据
+func queryTokensByName(ctx context.Context, searchNames []string) ([]remote.GmGnToken, error) {
+	if len(searchNames) == 0 {
+		return nil, nil
+	}
+
+	// 查询GMGN
+	namesStr := strings.Join(searchNames, ",")
+	limit := len(searchNames) * 3
+	if limit < 10 {
+		limit = 10
+	}
+
+	remoteTokens, err := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, "", limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query GMGN: %w", err)
+	}
+
+	return remoteTokens, nil
+}
+
+// detectNewTokens 检测是否有新币
+func detectNewTokens(ctx context.Context, intelligenceID string, searchNames []string) bool {
+	// 获取当前缓存
+	cacheTokens, err := ReadTokenCache(ctx, intelligenceID)
+	if err != nil {
+		lr.E().Errorf("Failed to read cache for detection: %v", err)
+		return false
+	}
+
+	// 不需要构建唯一键集合，直接使用IsSameToken方法比较
+
+	// 查询GMGN
+	remoteTokens, err := queryTokensByName(ctx, searchNames)
+	if err != nil {
+		lr.E().Errorf("Failed to query GMGN for detection: %v", err)
+		return false
+	}
+
+	// 检查是否有新币
+	for _, token := range remoteTokens {
+		if token.IsSupportedChain() {
+			// 检查是否已存在相同的币种
+			for _, existingToken := range cacheTokens {
+				if existingToken.IsSameToken(token) {
+					goto nextToken // 找到相同币种，检查下一个
+				}
+			}
+			// 没有找到相同币种，说明是新币
+			lr.I().Infof("Found new token %s on %s chain during detection for intelligence %s", token.Name, token.Network, intelligenceID)
+			return true
+		nextToken:
+		}
+	}
+
+	return false
+}
+
+// 简单的任务状态管理
+var (
+	taskRunningMap = make(map[string]bool)
+	taskMutex      sync.RWMutex
+)
+
+// toIntelligenceTokenCache 将GmGnToken转换为IntelligenceTokenCache
+// 不足的字段通过参数传入
+func toIntelligenceTokenCache(token remote.GmGnToken, standard string) dto_cache.IntelligenceTokenCache {
+	return dto_cache.IntelligenceTokenCache{
+		Name:            token.Name,
+		Symbol:          token.Symbol,
+		Standard:        &standard,
+		Decimals:        token.Decimals,
+		ContractAddress: token.Address,
+		Logo:            token.Logo,
+		Chain: dto_cache.ChainInfo{
+			Slug: strings.ToLower(token.Network),
+		},
+		CreatedAt: dto_cache.CustomTime{Time: time.Now()},
+		UpdatedAt: dto_cache.CustomTime{Time: time.Now()},
+	}
+}
+
+func isTaskRunning(key string) bool {
+	taskMutex.RLock()
+	defer taskMutex.RUnlock()
+	return taskRunningMap[key]
+}
+
+func setTaskRunning(key string, running bool) {
+	taskMutex.Lock()
+	defer taskMutex.Unlock()
+	taskRunningMap[key] = running
 }
 
 func analyzeEntities(data *model.MessageData) map[string]interface{} {
@@ -210,7 +345,7 @@ func createOrGetEntityFromETL(tokenName string) (*dto.Entity, error) {
 	// 检查是否已存在实体
 	existingEntity, err := dao.GetEntityBySlugAndType(tokenName, "token")
 	if err != nil {
-		lr.E().Errorf("Failed to get entity by slug and type: %v", err)
+		lr.E().Error(err)
 		return nil, err
 	}
 
@@ -226,7 +361,7 @@ func createOrGetEntityFromETL(tokenName string) (*dto.Entity, error) {
 	}
 
 	//if err := createEntity(entity); err != nil {
-	//	lr.E().Errorf("Failed to create entity: %v", err)
+	//	lr.E().Error(err)
 	//	return nil, err
 	//}
 

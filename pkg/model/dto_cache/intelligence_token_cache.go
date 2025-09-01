@@ -71,6 +71,17 @@ type ChainInfo struct {
 	Logo string `json:"logo"`
 }
 
+// GetUniqueKey 获取唯一标识符，用于map查找
+// 格式：name:contract_address:chain_slug
+func (c *IntelligenceTokenCache) GetUniqueKey() string {
+	if c == nil {
+		return ""
+	}
+	addr := strings.ToLower(strings.TrimPrefix(c.ContractAddress, "0x"))
+	chainSlug := strings.ToLower(c.Chain.Slug)
+	return fmt.Sprintf("%s:%s:%s", strings.ToLower(c.Name), addr, chainSlug)
+}
+
 // Equals 比较两个IntelligenceTokenCache是否相等
 // 使用name、contract_address、chain.slug三个字段进行比较
 func (c *IntelligenceTokenCache) Equals(other *IntelligenceTokenCache) bool {
@@ -78,32 +89,34 @@ func (c *IntelligenceTokenCache) Equals(other *IntelligenceTokenCache) bool {
 		return c == other
 	}
 
+	return c.GetUniqueKey() == other.GetUniqueKey()
+}
+
+// IsSameToken 比较当前token与远程token是否为同一币种
+// 使用name、contract_address、chain.slug三个字段进行比较
+func (c *IntelligenceTokenCache) IsSameToken(remoteToken remote.GmGnToken) bool {
+	if c == nil {
+		return false
+	}
+
 	// 比较name（不区分大小写）
-	if !strings.EqualFold(c.Name, other.Name) {
+	if !strings.EqualFold(c.Name, remoteToken.Name) {
 		return false
 	}
 
 	// 比较contract_address（不区分大小写，忽略0x前缀）
 	cAddr := strings.ToLower(strings.TrimPrefix(c.ContractAddress, "0x"))
-	otherAddr := strings.ToLower(strings.TrimPrefix(other.ContractAddress, "0x"))
-	if cAddr != otherAddr {
+	remoteAddr := strings.ToLower(strings.TrimPrefix(remoteToken.Address, "0x"))
+	if cAddr != remoteAddr {
 		return false
 	}
 
 	// 比较chain.slug（不区分大小写）
-	if !strings.EqualFold(c.Chain.Slug, other.Chain.Slug) {
+	if !strings.EqualFold(c.Chain.Slug, strings.ToLower(remoteToken.Network)) {
 		return false
 	}
 
 	return true
-}
-
-// GetUniqueKey 获取唯一标识符，用于map查找
-// 格式：name:contract_address:chain_slug
-func (c *IntelligenceTokenCache) GetUniqueKey() string {
-	addr := strings.ToLower(strings.TrimPrefix(c.ContractAddress, "0x"))
-	chainSlug := strings.ToLower(c.Chain.Slug)
-	return fmt.Sprintf("%s:%s:%s", strings.ToLower(c.Name), addr, chainSlug)
 }
 
 // FindMatchingToken 在远程token列表中查找匹配的token

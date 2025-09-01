@@ -1,6 +1,8 @@
 package remote
 
-import "strings"
+import (
+	"strings"
+)
 
 type GmGnToken struct {
 	Name       string `json:"name"`
