@@ -41,7 +41,7 @@ const (
 )
 
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
-	//time.Sleep(detectionInterval)
+	time.Sleep(detectionInterval)
 
 	cacheTokens, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {

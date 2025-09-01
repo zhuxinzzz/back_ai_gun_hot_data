@@ -118,6 +118,12 @@ func UpdateMarketData(ctx context.Context, intelligenceID string) error {
 		return fmt.Errorf("failed to write intelligence token cache: %w", err)
 	}
 
+	// 同步showed_tokens到intelligence表
+	//if err := SyncShowedTokensToIntelligence(intelligenceID); err != nil {
+	//	lr.E().Errorf("Failed to sync showed tokens to intelligence: %v", err)
+	//	// 不返回错误，因为缓存更新已经成功
+	//}
+
 	lr.I().Infof("Updated market data for intelligence %s: %d/%d cacheTokens", intelligenceID, updatedCount, len(cacheData))
 	return nil
 }

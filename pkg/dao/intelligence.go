@@ -5,6 +5,7 @@ import (
 	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/utils"
 	"errors"
+	"fmt"
 
 	"gorm.io/gorm"
 )
@@ -118,4 +119,43 @@ func GetAllActiveIntelligences() ([]*dto.Intelligence, error) {
 	}
 
 	return intelligences, nil
+}
+
+func UpdateIntelligenceShowedTokens(intelligenceID string, showedTokens []dto.ShowedToken) error {
+	// 序列化showed_tokens数据
+	jsonStr, err := dto.MarshalShowedTokens(showedTokens)
+	if err != nil {
+		lr.E().Errorf("Failed to marshal showed tokens: %v", err)
+		return err
+	}
+
+	// 只更新showed_tokens字段
+	result := GetDB().Model(&dto.Intelligence{}).
+		Where("id = ? AND is_deleted = false", intelligenceID).
+		Update("showed_tokens", jsonStr)
+
+	if result.Error != nil {
+		lr.E().Errorf("Failed to update intelligence showed tokens: %v", result.Error)
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("intelligence not found or no rows affected: %s", intelligenceID)
+	}
+
+	return nil
+}
+
+// GetIntelligenceShowedTokens 获取intelligence的showed_tokens数据
+func GetIntelligenceShowedTokens(intelligenceID string) ([]dto.ShowedToken, error) {
+	intelligence, err := GetIntelligenceByID(intelligenceID)
+	if err != nil {
+		lr.E().Errorf("Failed to get intelligence for showed tokens: %v", err)
+		return nil, err
+	}
+	if intelligence == nil {
+		return []dto.ShowedToken{}, nil
+	}
+
+	return intelligence.GetShowedTokens()
 }

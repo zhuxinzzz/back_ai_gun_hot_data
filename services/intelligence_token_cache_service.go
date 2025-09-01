@@ -2,14 +2,13 @@ package services
 
 import (
 	"back_ai_gun_data/pkg/cache"
+	"back_ai_gun_data/pkg/dao"
 	"back_ai_gun_data/pkg/model"
+	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/pkg/model/dto_cache"
-	"back_ai_gun_data/pkg/model/remote"
-	"back_ai_gun_data/services/remote_service"
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"back_ai_gun_data/pkg/lr"
@@ -127,7 +126,6 @@ func setIntelligenceCoinCache(intelligenceID string, data []dto_cache.Intelligen
 	return cache.Set(ctx, cacheKey, string(jsonData), CacheExpiration)
 }
 
-// GetIntelligenceCoins 获取情报关联的币信息
 func GetIntelligenceCoins(intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
 	data, err := getIntelligenceCoinCache(intelligenceID)
 	if err != nil {
@@ -136,66 +134,27 @@ func GetIntelligenceCoins(intelligenceID string) ([]dto_cache.IntelligenceTokenC
 	return data, nil
 }
 
-// DeleteIntelligenceCoinCache 删除情报-币缓存
-func DeleteIntelligenceCoinCache(intelligenceID string) error {
-	ctx := context.Background()
-	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
-	return cache.Del(ctx, cacheKey)
-}
-
-// updateMarketInfoFromGMGN 从GMGN服务更新市场信息
-func updateMarketInfoFromGMGN(coins []dto_cache.IntelligenceTokenCache) error {
-	// 收集所有需要查询的币名称
-	var coinNames []string
-	var validCoins []dto_cache.IntelligenceTokenCache
-
-	for _, coin := range coins {
-		if coin.Name != "" {
-			coinNames = append(coinNames, coin.Name)
-			validCoins = append(validCoins, coin)
-		}
-	}
-
-	if len(coinNames) == 0 {
-		return nil
-	}
-
-	// 将名称列表转换为逗号分隔的字符串
-	namesStr := strings.Join(coinNames, ",")
-
-	// 批量调用GMGN服务查询市场信息
-	tokens, err := remote_service.QueryTokensByName(namesStr, "")
+func SyncShowedTokensToIntelligence(intelligenceID string) error {
+	cacheTokens, err := GetIntelligenceCoins(intelligenceID)
 	if err != nil {
-		lr.E().Errorf("Failed to query GMGN for coins: %v", err)
+		lr.E().Errorf("Failed to get intelligence coins for sync: %v", err)
 		return err
 	}
 
-	// 创建token映射，用于快速查找
-	tokenMap := make(map[string]remote.GmGnToken)
-	for _, token := range tokens {
-		tokenMap[token.Name] = token
+	showedTokens := make([]dto.ShowedToken, 0)
+	for _, cacheToken := range cacheTokens {
+		showedToken := cacheToken.ToShowedToken()
+		showedTokens = append(showedTokens, showedToken)
 	}
 
-	// 更新市场信息
-	for _, coin := range validCoins {
-		if token, exists := tokenMap[coin.Name]; exists {
-			// 找到对应的币，更新其索引
-			for j, originalCoin := range coins {
-				if originalCoin.Name == coin.Name {
-					coins[j].Stats.CurrentPriceUSD = token.PriceUSD
-					coins[j].Stats.CurrentMarketCap = token.MarketCap
-					coins[j].UpdatedAt = dto_cache.CustomTime{Time: time.Now()}
-
-					break
-				}
-			}
-		}
+	if err := dao.UpdateIntelligenceShowedTokens(intelligenceID, showedTokens); err != nil {
+		lr.E().Errorf("Failed to update intelligence showed tokens: %v", err)
+		return err
 	}
 
 	return nil
 }
 
-// 辅助函数
 func stringPtr(s string) *string {
 	return &s
 }

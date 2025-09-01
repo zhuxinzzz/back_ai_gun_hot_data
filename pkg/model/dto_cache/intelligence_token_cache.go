@@ -1,6 +1,7 @@
 package dto_cache
 
 import (
+	"back_ai_gun_data/pkg/model/dto"
 	"fmt"
 	"strings"
 	"time"
@@ -143,4 +144,13 @@ func (c *IntelligenceTokenCache) FindMatchingToken(remoteTokens []remote.GmGnTok
 	}
 
 	return nil
+}
+
+func (c *IntelligenceTokenCache) ToShowedToken() dto.ShowedToken {
+	return dto.ShowedToken{
+		Slug:             c.Name,
+		ContractAddress:  c.ContractAddress,
+		WarningPriceUSD:  c.Stats.WarningPriceUSD,
+		WarningMarketCap: c.Stats.WarningMarketCap,
+	}
 }
