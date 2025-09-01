@@ -13,26 +13,29 @@ func GetHost() string {
 }
 
 // 扁平化HTTP客户端 - 直接使用，不包装
-var httpClient = resty.New().
-	SetTimeout(30 * time.Second).
-	SetRetryCount(3).
-	SetRetryWaitTime(1 * time.Second).
-	SetRetryMaxWaitTime(5 * time.Second)
+var cli *resty.Client
 
 func Init() {
+	cli = resty.New().
+		SetTimeout(30 * time.Second).
+		SetRetryCount(3).
+		SetRetryWaitTime(1 * time.Second).
+		SetRetryMaxWaitTime(5 * time.Second)
+	//cli.SetDebug(true)
 	// 设置通用请求头
-	httpClient.SetHeader("User-Agent", "back_ai_gun_data/1.0")
-	httpClient.SetHeader("Content-Type", "application/json")
+	cli.SetHeader("User-Agent", "back_ai_gun_data/1.0")
+	cli.SetHeader("Content-Type", "application/json")
 
 	// 设置响应处理
-	httpClient.OnAfterResponse(func(client *resty.Client, resp *resty.Response) error {
+	cli.OnAfterResponse(func(client *resty.Client, resp *resty.Response) error {
 		if resp.StatusCode() >= 400 {
 			lr.E().Errorf("HTTP error: %d - %s", resp.StatusCode(), resp.String())
 		}
 		return nil
 	})
+
 }
 
 func Cli() *resty.Client {
-	return httpClient
+	return cli
 }

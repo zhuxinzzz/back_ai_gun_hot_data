@@ -11,6 +11,7 @@ import (
 	"back_ai_gun_data/utils"
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -71,9 +72,22 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 			lr.E().Errorf("Batch GMGN query failed for new tokens: %v", qErr)
 			gmgnTokens = nil
 		}
-		gmgnByName := make(map[string]remote.GmGnToken)
+
+		// 过滤支持的链，并按name+network去重
+		supportedChains := map[string]struct{}{
+			"solana":   {},
+			"bsc":      {},
+			"ethereum": {},
+			"base":     {},
+		}
+
+		gmgnByNameAndNetwork := make(map[string]remote.GmGnToken)
 		for _, t := range gmgnTokens {
-			gmgnByName[t.Name] = t
+			// 只保留支持的链
+			if _, supported := supportedChains[strings.ToLower(t.Network)]; supported {
+				key := t.Name + ":" + strings.ToLower(t.Network)
+				gmgnByNameAndNetwork[key] = t
+			}
 		}
 
 		// 2.4 生成新增token占位并尽量补齐市值，确保有稳定的唯一ID
@@ -92,16 +106,31 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 				UpdatedAt: dto_cache.CustomTime{Time: now},
 			}
 
-			if info, ok := gmgnByName[name]; ok {
-				newToken.Stats.CurrentPriceUSD = info.PriceUSD
-				newToken.Stats.CurrentMarketCap = info.MarketCap
-				// 直接使用真实数据作为预警值，确保新token公平参与排序
-				newToken.Stats.WarningPriceUSD = info.PriceUSD
-				newToken.Stats.WarningMarketCap = info.MarketCap
-				if newToken.ContractAddress == "" {
-					newToken.ContractAddress = info.Address
+			// 为每个name查找所有可能的网络结果，优先选择市值最高的
+			var bestToken *remote.GmGnToken
+			var bestMarketCap float64
+
+			for key, token := range gmgnByNameAndNetwork {
+				if strings.HasPrefix(key, name+":") {
+					marketCap, _ := strconv.ParseFloat(token.MarketCap, 64)
+					if bestToken == nil || marketCap > bestMarketCap {
+						bestToken = &token
+						bestMarketCap = marketCap
+					}
 				}
-				// 如果需要，也可根据 info.Network 映射链信息，这里保持默认不强制设置
+			}
+
+			if bestToken != nil {
+				newToken.Stats.CurrentPriceUSD = bestToken.PriceUSD
+				newToken.Stats.CurrentMarketCap = bestToken.MarketCap
+				// 直接使用真实数据作为预警值，确保新token公平参与排序
+				newToken.Stats.WarningPriceUSD = bestToken.PriceUSD
+				newToken.Stats.WarningMarketCap = bestToken.MarketCap
+				if newToken.ContractAddress == "" {
+					newToken.ContractAddress = bestToken.Address
+				}
+				// 设置链信息
+				newToken.Chain.Slug = strings.ToLower(bestToken.Network)
 			}
 
 			combined = append(combined, newToken)
@@ -123,15 +152,15 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		top3 = len(rankedCoins)
 	}
 
-	// 构建旧缓存名称集合，用于快速判断
-	oldTokenNames := make(map[string]struct{}, len(tokens))
+	// 构建旧缓存的唯一标识映射，用于快速判断
+	oldTokenKeys := make(map[string]dto_cache.IntelligenceTokenCache, len(tokens))
 	for _, t := range tokens {
-		oldTokenNames[t.Name] = struct{}{}
+		oldTokenKeys[t.GetUniqueKey()] = t
 	}
 
 	// 检查前三名中是否有新增token
 	for i := 0; i < top3; i++ {
-		if _, exists := oldTokenNames[rankedCoins[i].Name]; !exists {
+		if _, exists := oldTokenKeys[rankedCoins[i].GetUniqueKey()]; !exists {
 			hasNewTokenInTop3 = true
 			break
 		}
@@ -144,7 +173,7 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 
 		// 遍历排序后的结果，按顺序添加
 		for _, token := range rankedCoins {
-			if _, exists := oldTokenNames[token.Name]; exists {
+			if _, exists := oldTokenKeys[token.GetUniqueKey()]; exists {
 				// 旧token，直接添加（保持排序后的顺序）
 				finalCache = append(finalCache, token)
 			} else {

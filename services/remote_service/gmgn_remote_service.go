@@ -73,6 +73,14 @@ func QueryTokensByName(name string, chain string) ([]remote.GmGnToken, error) {
 	return QueryTokensByNameWithLimit(nil, name, chain, 10) // 默认10，保持向后兼容
 }
 
+// SOL→ BSC→ ETH→ Base
+var chainFilter = map[string]struct{}{
+	"solana":   {},
+	"bsc":      {},
+	"ethereum": {},
+	"base":     {},
+}
+
 func QueryTokensByNameWithLimit(ctx context.Context, name string, chain string, limit int) ([]remote.GmGnToken, error) {
 	params := remote.TokenQueryParams{
 		Q:     name,  // 查询关键字,全称、简称、地址,多个查询用逗号分隔
@@ -89,6 +97,7 @@ func QueryTokensByNameWithLimit(ctx context.Context, name string, chain string, 
 
 	var allTokens []remote.GmGnToken
 	for _, tokens := range resp.Data {
+
 		allTokens = append(allTokens, tokens...)
 	}
 

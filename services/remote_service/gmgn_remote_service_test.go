@@ -63,7 +63,8 @@ import (
 */
 func TestQueryTokensByName(t *testing.T) {
 	lr.Init()
-	name := "CRYPTO,BITCOIN"
+	Init()
+	name := "Kraken Wrapped BTC"
 	chain := ""
 
 	res, err := QueryTokensByName(name, chain)

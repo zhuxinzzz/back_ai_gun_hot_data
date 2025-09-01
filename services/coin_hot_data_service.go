@@ -8,7 +8,6 @@ import (
 // 输入的 coins 应为已按排名排序的列表
 // 逻辑：仅当当前前三中出现“新成员”时，按顺序追加到缓存；已存在的历史成员保留
 func ProcessCoinHotData(intelligenceID string, coins []dto_cache.IntelligenceTokenCache) error {
-	// 只关心当前排名的前三名
 	topN := 3
 	if len(coins) < topN {
 		topN = len(coins)
