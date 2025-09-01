@@ -30,8 +30,8 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 	// 1. 从缓存读取最新的币数据（上层已经更新过市场信息）
 	coins, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {
-		lr.E().Errorf("Failed to read intelligence coin cache: %v", err)
-		return fmt.Errorf("failed to read intelligence coin cache: %w", err)
+		lr.E().Errorf("Failed to read intelligence token cache: %v", err)
+		return fmt.Errorf("failed to read intelligence token cache: %w", err)
 	}
 
 	if len(coins) == 0 {
@@ -39,20 +39,20 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		return nil
 	}
 
-	// 2. 调用admin服务排序接口
-	rankingResponse, err := remote_service.CallAdminRanking(coins)
+	// 2. 调用admin服务排序接口，返回排序后的切片
+	rankedCoins, err := remote_service.CallAdminRanking(coins)
 	if err != nil {
 		lr.E().Errorf("Failed to call admin ranking service: %v", err)
 		return fmt.Errorf("failed to call admin ranking service: %w", err)
 	}
 
-	// 3. 处理热点标签并进入热数据缓存
-	if err := ProcessCoinHotData(data.ID, rankingResponse.Data); err != nil {
-		lr.E().Errorf("Failed to process coin hot data: %v", err)
-		return fmt.Errorf("failed to process coin hot data: %w", err)
+	// 3. 处理热点数据（仅追加新的前三名）
+	if err := ProcessCoinHotData(data.ID, rankedCoins); err != nil {
+		lr.E().Errorf("Failed to process token hot data: %v", err)
+		return fmt.Errorf("failed to process token hot data: %w", err)
 	}
 
-	lr.I().Infof("Successfully processed coin ranking and hot data for intelligence %s", data.ID)
+	lr.I().Infof("Successfully processed token ranking and hot data for intelligence %s", data.ID)
 	return nil
 }
 

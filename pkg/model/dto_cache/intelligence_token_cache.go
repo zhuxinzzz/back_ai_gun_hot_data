@@ -1,4 +1,4 @@
-package dto
+package dto_cache
 
 import (
 	"fmt"
@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// IntelligenceCoinCache 情报-币缓存模型
-type IntelligenceCoinCache struct {
+// IntelligenceTokenCache 情报-币缓存模型
+type IntelligenceTokenCache struct {
 	ID              string          `json:"id"`               // project chain data id
 	EntityID        string          `json:"entity_id"`        // 实体ID
 	Name            string          `json:"name"`             // 币名称

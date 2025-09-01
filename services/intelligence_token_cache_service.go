@@ -3,7 +3,7 @@ package services
 import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/model"
-	"back_ai_gun_data/pkg/model/dto"
+	"back_ai_gun_data/pkg/model/dto_cache"
 	"back_ai_gun_data/pkg/model/remote"
 	"back_ai_gun_data/services/remote_service"
 	"context"
@@ -32,20 +32,20 @@ func ProcessIntelligenceCoinCache(data *model.MessageData) error {
 	}
 
 	if err := updateIntelligenceCoinCache(intelligenceID, coins); err != nil {
-		lr.E().Errorf("Failed to update intelligence coin cache: %v", err)
-		return fmt.Errorf("failed to update intelligence coin cache: %w", err)
+		lr.E().Errorf("Failed to update intelligence token cache: %v", err)
+		return fmt.Errorf("failed to update intelligence token cache: %w", err)
 	}
 
 	return nil
 }
 
 // extractCoinsFromMessage 从消息中提取币信息
-func extractCoinsFromMessage(data *model.MessageData) ([]dto.IntelligenceCoinCache, error) {
-	var coins []dto.IntelligenceCoinCache
+func extractCoinsFromMessage(data *model.MessageData) ([]dto_cache.IntelligenceTokenCache, error) {
+	var coins []dto_cache.IntelligenceTokenCache
 
 	// 从tokens中提取币信息
 	for _, tokenName := range data.Data.EntitiesExtract.Entities.Tokens {
-		coin := dto.IntelligenceCoinCache{
+		coin := dto_cache.IntelligenceTokenCache{
 			ID:              utils.GenerateUUIDV7(), // 生成project chain data id
 			EntityID:        utils.GenerateUUIDV7(), // 生成实体ID
 			Name:            tokenName,
@@ -54,28 +54,28 @@ func extractCoinsFromMessage(data *model.MessageData) ([]dto.IntelligenceCoinCac
 			Decimals:        18,                 // 默认精度
 			ContractAddress: "",                 // 暂时为空，后续从搜索中获取
 			Logo:            "",                 // 暂时为空，后续从搜索中获取
-			Stats: dto.CoinMarketStats{
+			Stats: dto_cache.CoinMarketStats{
 				WarningPriceUSD:     "0",
 				WarningMarketCap:    "0",
 				CurrentPriceUSD:     "0",
 				CurrentMarketCap:    "0",
 				HighestIncreaseRate: "0",
 			},
-			Chain: dto.ChainInfo{
+			Chain: dto_cache.ChainInfo{
 				ID:   "default-chain-id",
 				Name: "Ethereum",
 				Slug: "eth",
 				Logo: "assets/chain/eth.png",
 			},
-			CreatedAt: dto.CustomTime{Time: time.Now()},
-			UpdatedAt: dto.CustomTime{Time: time.Now()},
+			CreatedAt: dto_cache.CustomTime{Time: time.Now()},
+			UpdatedAt: dto_cache.CustomTime{Time: time.Now()},
 		}
 		coins = append(coins, coin)
 	}
 
 	// 从projects中提取币信息（如果有的话）
 	for _, projectName := range data.Data.EntitiesExtract.Entities.Projects {
-		coin := dto.IntelligenceCoinCache{
+		coin := dto_cache.IntelligenceTokenCache{
 			ID:              utils.GenerateUUIDV7(),
 			EntityID:        utils.GenerateUUIDV7(),
 			Name:            projectName,
@@ -84,21 +84,21 @@ func extractCoinsFromMessage(data *model.MessageData) ([]dto.IntelligenceCoinCac
 			Decimals:        18,
 			ContractAddress: "",
 			Logo:            "",
-			Stats: dto.CoinMarketStats{
+			Stats: dto_cache.CoinMarketStats{
 				WarningPriceUSD:     "0",
 				WarningMarketCap:    "0",
 				CurrentPriceUSD:     "0",
 				CurrentMarketCap:    "0",
 				HighestIncreaseRate: "0",
 			},
-			Chain: dto.ChainInfo{
+			Chain: dto_cache.ChainInfo{
 				ID:   "default-chain-id",
 				Name: "Ethereum",
 				Slug: "eth",
 				Logo: "assets/chain/eth.png",
 			},
-			CreatedAt: dto.CustomTime{Time: time.Now()},
-			UpdatedAt: dto.CustomTime{Time: time.Now()},
+			CreatedAt: dto_cache.CustomTime{Time: time.Now()},
+			UpdatedAt: dto_cache.CustomTime{Time: time.Now()},
 		}
 		coins = append(coins, coin)
 	}
@@ -114,13 +114,13 @@ func generateSymbol(name string) string {
 	return name
 }
 
-func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.IntelligenceCoinCache) error {
+func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto_cache.IntelligenceTokenCache) error {
 	// 获取现有缓存
 	existingCoins, err := getIntelligenceCoinCache(intelligenceID)
 	if err != nil {
 		lr.E().Errorf("Failed to get existing cache for intelligence %s: %v", intelligenceID, err)
 		// 如果获取失败，使用空数组
-		existingCoins = []dto.IntelligenceCoinCache{}
+		existingCoins = []dto_cache.IntelligenceTokenCache{}
 	}
 
 	// 调用GMGN服务更新市场信息
@@ -131,12 +131,12 @@ func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.Intellige
 
 	// 处理币热数据流程（更新admin服务缓存、排序、打标签、进入热数据缓存）
 	if err := ProcessCoinHotData(intelligenceID, newCoins); err != nil {
-		lr.E().Errorf("Failed to process coin hot data for intelligence %s: %v", intelligenceID, err)
+		lr.E().Errorf("Failed to process token hot data for intelligence %s: %v", intelligenceID, err)
 		// 热数据处理失败不影响主缓存更新流程
 	}
 
 	// 创建现有币的映射
-	existingCoinsMap := make(map[string]dto.IntelligenceCoinCache)
+	existingCoinsMap := make(map[string]dto_cache.IntelligenceTokenCache)
 	for _, coin := range existingCoins {
 		existingCoinsMap[coin.Name] = coin
 	}
@@ -146,13 +146,13 @@ func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.Intellige
 		if existingCoin, exists := existingCoinsMap[newCoin.Name]; exists {
 			// 更新现有币信息，保留原有的市场数据
 			newCoin.Stats = existingCoin.Stats
-			newCoin.UpdatedAt = dto.CustomTime{Time: time.Now()}
+			newCoin.UpdatedAt = dto_cache.CustomTime{Time: time.Now()}
 		}
 		existingCoinsMap[newCoin.Name] = newCoin
 	}
 
 	// 转换回切片
-	var updatedCoins []dto.IntelligenceCoinCache
+	var updatedCoins []dto_cache.IntelligenceTokenCache
 	for _, coin := range existingCoinsMap {
 		updatedCoins = append(updatedCoins, coin)
 	}
@@ -161,7 +161,7 @@ func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.Intellige
 	return setIntelligenceCoinCache(intelligenceID, updatedCoins)
 }
 
-func getIntelligenceCoinCache(intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
+func getIntelligenceCoinCache(intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
 	ctx := context.Background()
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
@@ -170,7 +170,7 @@ func getIntelligenceCoinCache(intelligenceID string) ([]dto.IntelligenceCoinCach
 		return nil, err
 	}
 
-	var data []dto.IntelligenceCoinCache
+	var data []dto_cache.IntelligenceTokenCache
 	if err := json.Unmarshal([]byte(cacheData), &data); err != nil {
 		lr.E().Errorf("Failed to unmarshal cache data: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
@@ -180,7 +180,7 @@ func getIntelligenceCoinCache(intelligenceID string) ([]dto.IntelligenceCoinCach
 }
 
 // setIntelligenceCoinCache 设置情报-币缓存
-func setIntelligenceCoinCache(intelligenceID string, data []dto.IntelligenceCoinCache) error {
+func setIntelligenceCoinCache(intelligenceID string, data []dto_cache.IntelligenceTokenCache) error {
 	ctx := context.Background()
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
@@ -194,7 +194,7 @@ func setIntelligenceCoinCache(intelligenceID string, data []dto.IntelligenceCoin
 }
 
 // GetIntelligenceCoins 获取情报关联的币信息
-func GetIntelligenceCoins(intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
+func GetIntelligenceCoins(intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
 	data, err := getIntelligenceCoinCache(intelligenceID)
 	if err != nil {
 		return nil, err
@@ -210,10 +210,10 @@ func DeleteIntelligenceCoinCache(intelligenceID string) error {
 }
 
 // updateMarketInfoFromGMGN 从GMGN服务更新市场信息
-func updateMarketInfoFromGMGN(coins []dto.IntelligenceCoinCache) error {
+func updateMarketInfoFromGMGN(coins []dto_cache.IntelligenceTokenCache) error {
 	// 收集所有需要查询的币名称
 	var coinNames []string
-	var validCoins []dto.IntelligenceCoinCache
+	var validCoins []dto_cache.IntelligenceTokenCache
 
 	for _, coin := range coins {
 		if coin.Name != "" {
@@ -250,7 +250,7 @@ func updateMarketInfoFromGMGN(coins []dto.IntelligenceCoinCache) error {
 				if originalCoin.Name == coin.Name {
 					coins[j].Stats.CurrentPriceUSD = token.PriceUSD
 					coins[j].Stats.CurrentMarketCap = token.MarketCap
-					coins[j].UpdatedAt = dto.CustomTime{Time: time.Now()}
+					coins[j].UpdatedAt = dto_cache.CustomTime{Time: time.Now()}
 
 					break
 				}

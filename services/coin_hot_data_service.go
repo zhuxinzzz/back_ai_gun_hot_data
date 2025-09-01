@@ -2,8 +2,7 @@ package services
 
 import (
 	"back_ai_gun_data/pkg/cache"
-	"back_ai_gun_data/pkg/model/dto"
-	"back_ai_gun_data/services/remote_service"
+	"back_ai_gun_data/pkg/model/dto_cache"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,168 +13,65 @@ import (
 
 const (
 	// 币热数据缓存键前缀
-	CoinHotDataCacheKeyPrefix = "dogex:coin:hot_data:"
+	CoinHotDataCacheKeyPrefix = "dogex:token:hot_data:"
 
 	// 币热数据缓存过期时间：7天
 	CoinHotDataCacheExpiration = 7 * 24 * time.Hour
 )
 
 // ProcessCoinHotData 处理币热数据流程
-// 1. 更新admin服务缓存中的市场信息
-// 2. 调用admin服务排序接口
-// 4. 进入热数据缓存
-func ProcessCoinHotData(intelligenceID string, coins []dto.IntelligenceCoinCache) error {
-	// 步骤2: 调用admin服务排序接口
-	rankingResponse, err := callAdminRankingService(coins)
-	if err != nil {
-		lr.E().Errorf("Failed to call admin ranking service: %v", err)
+// 输入的 coins 应为已按排名排序的列表
+// 逻辑：仅当当前前三中出现“新成员”时，按顺序追加到缓存；已存在的历史成员保留
+func ProcessCoinHotData(intelligenceID string, coins []dto_cache.IntelligenceTokenCache) error {
+	if err := appendNewTopThree(coins); err != nil {
+		lr.E().Errorf("Failed to process hot data: %v", err)
 		return err
 	}
-
-	// 步骤3: 打热点标签并进入热数据缓存
-	if err := processHotDataLabels(rankingResponse.Data); err != nil {
-		lr.E().Errorf("Failed to process hot data labels: %v", err)
-		return err
-	}
-
 	return nil
 }
 
-// updateAdminMarketData 更新admin服务缓存中的市场信息
-func updateAdminMarketData(intelligenceID string, coins []dto.IntelligenceCoinCache) error {
-	// 调用admin服务更新市场信息
-	if err := UpdateTokenMarketData(nil, intelligenceID); err != nil {
-		lr.E().Errorf("Failed to update admin market data: %v", err)
-		return fmt.Errorf("failed to update admin market data: %w", err)
+// appendNewTopThree 仅将当前排序结果的前三名里“新出现”的成员按顺序追加到缓存
+func appendNewTopThree(rankedCoins []dto_cache.IntelligenceTokenCache) error {
+	// 只关心当前排名的前三名
+	topN := 3
+	if len(rankedCoins) < topN {
+		topN = len(rankedCoins)
+	}
+	if topN == 0 {
+		return nil
 	}
 
-	return nil
-}
+	// 读取现有热数据缓存（为一个全局列表）
+	existing, err := getCoinHotDataCache()
+	if err != nil || existing == nil {
+		existing = []dto_cache.IntelligenceTokenCache{}
+	}
 
-// callAdminRankingService 调用admin服务排序接口
-func callAdminRankingService(coins []dto.IntelligenceCoinCache) (*dto.AdminRankingResponse, error) {
-	// 过滤有效的币种
-	var validCoins []dto.IntelligenceCoinCache
-	for _, coin := range coins {
-		// 跳过没有名称的币
-		if coin.Name == "" {
+	// 构建已存在ID集合，避免重复
+	existingIDs := make(map[string]struct{}, len(existing))
+	for _, c := range existing {
+		existingIDs[c.ID] = struct{}{}
+	}
+
+	// 按顺序检查前三，如果是新成员则按顺序追加
+	for i := 0; i < topN; i++ {
+		rc := rankedCoins[i]
+		if _, ok := existingIDs[rc.ID]; ok {
 			continue
 		}
-		validCoins = append(validCoins, coin)
+		existing = append(existing, rc)
 	}
 
-	if len(validCoins) == 0 {
-		return &dto.AdminRankingResponse{
-			Code:    0,
-			Message: "success",
-			Data:    []dto.IntelligenceCoinCache{},
-		}, nil
+	// 若没有新增则不写回
+	if len(existingIDs) == len(existing) {
+		return nil
 	}
 
-	// 调用admin服务排序接口
-	response, err := remote_service.CallAdminRanking(validCoins)
-	if err != nil {
-		lr.E().Errorf("Failed to call admin ranking service: %v", err)
-		return nil, fmt.Errorf("failed to call admin ranking service: %w", err)
-	}
-
-	return response, nil
+	return setCoinHotDataCache(existing)
 }
 
-// processHotDataLabels 处理热点标签并进入热数据缓存
-func processHotDataLabels(rankedCoins []dto.IntelligenceCoinCache) error {
-	var hotDataCoins []dto.CoinHotData
-
-	for i, rankedCoin := range rankedCoins {
-		// 根据排序结果确定是否进入前三名
-		// 假设rankedCoins已经按排名排序，前三个是前三名
-		isTopThree := i < 3
-		ranking := i + 1 // 排名从1开始
-
-		// 创建热数据
-		hotData := dto.CoinHotData{
-			ID:              rankedCoin.ID,
-			EntityID:        rankedCoin.EntityID,
-			Name:            rankedCoin.Name,
-			Symbol:          rankedCoin.Symbol,
-			Standard:        rankedCoin.Standard,
-			Decimals:        rankedCoin.Decimals,
-			ContractAddress: rankedCoin.ContractAddress,
-			Logo:            rankedCoin.Logo,
-			Stats:           rankedCoin.Stats,
-			Chain:           rankedCoin.Chain,
-			IsShow:          isTopThree, // 前三名显示
-			Ranking:         ranking,    // 当前排名
-			HighestRanking:  ranking,    // 暂时设为当前排名，后续需要比较历史最高
-			CreatedAt:       rankedCoin.CreatedAt.Time,
-			UpdatedAt:       time.Now(),
-		}
-
-		// 如果是首次进入前三，记录时间
-		if isTopThree {
-			now := time.Now()
-			hotData.FirstRankedAt = &now
-			hotData.LastRankedAt = &now
-		}
-
-		// 只有被打上is_show标签的币才进入热数据缓存
-		if hotData.IsShow {
-			hotDataCoins = append(hotDataCoins, hotData)
-		}
-	}
-
-	// 更新热数据缓存
-	if len(hotDataCoins) > 0 {
-		if err := updateCoinHotDataCache(hotDataCoins); err != nil {
-			lr.E().Errorf("Failed to update coin hot data cache: %v", err)
-			return fmt.Errorf("failed to update coin hot data cache: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// updateCoinHotDataCache 更新币热数据缓存
-func updateCoinHotDataCache(hotDataCoins []dto.CoinHotData) error {
-	// 获取现有的热数据缓存
-	existingCache, err := getCoinHotDataCache()
-	if err != nil {
-		lr.E().Errorf("Failed to get existing hot data cache: %v", err)
-		// 创建新的缓存
-		existingCache = &dto.CoinHotDataCache{
-			Coins:     []dto.CoinHotData{},
-			UpdatedAt: time.Now(),
-		}
-	}
-
-	// 创建币ID映射，用于快速查找
-	existingCoinsMap := make(map[string]dto.CoinHotData)
-	for _, coin := range existingCache.Coins {
-		existingCoinsMap[coin.ID] = coin
-	}
-
-	// 更新或添加新的热数据
-	for _, newCoin := range hotDataCoins {
-		existingCoinsMap[newCoin.ID] = newCoin
-	}
-
-	// 转换回切片
-	var updatedCoins []dto.CoinHotData
-	for _, coin := range existingCoinsMap {
-		updatedCoins = append(updatedCoins, coin)
-	}
-
-	// 更新缓存
-	updatedCache := &dto.CoinHotDataCache{
-		Coins:     updatedCoins,
-		UpdatedAt: time.Now(),
-	}
-
-	return setCoinHotDataCache(updatedCache)
-}
-
-// getCoinHotDataCache 获取币热数据缓存
-func getCoinHotDataCache() (*dto.CoinHotDataCache, error) {
+// getCoinHotDataCache 获取币热数据缓存（直接返回代币集合）
+func getCoinHotDataCache() ([]dto_cache.IntelligenceTokenCache, error) {
 	ctx := context.Background()
 	cacheKey := CoinHotDataCacheKeyPrefix + "all"
 
@@ -184,21 +80,21 @@ func getCoinHotDataCache() (*dto.CoinHotDataCache, error) {
 		return nil, err
 	}
 
-	var data dto.CoinHotDataCache
+	var data []dto_cache.IntelligenceTokenCache
 	if err := json.Unmarshal([]byte(cacheData), &data); err != nil {
 		lr.E().Errorf("Failed to unmarshal hot data cache: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal hot data cache: %w", err)
 	}
 
-	return &data, nil
+	return data, nil
 }
 
-// setCoinHotDataCache 设置币热数据缓存
-func setCoinHotDataCache(data *dto.CoinHotDataCache) error {
+// setCoinHotDataCache 设置币热数据缓存（直接存储代币集合）
+func setCoinHotDataCache(coins []dto_cache.IntelligenceTokenCache) error {
 	ctx := context.Background()
 	cacheKey := CoinHotDataCacheKeyPrefix + "all"
 
-	jsonData, err := json.Marshal(data)
+	jsonData, err := json.Marshal(coins)
 	if err != nil {
 		lr.E().Errorf("Failed to marshal hot data cache: %v", err)
 		return fmt.Errorf("failed to marshal hot data cache: %w", err)
@@ -207,18 +103,37 @@ func setCoinHotDataCache(data *dto.CoinHotDataCache) error {
 	return cache.Set(ctx, cacheKey, string(jsonData), CoinHotDataCacheExpiration)
 }
 
-// GetCoinHotData 获取币热数据
-func GetCoinHotData() ([]dto.CoinHotData, error) {
-	cache, err := getCoinHotDataCache()
+// GetCoinHotData 获取币热数据（直接返回代币集合）
+func GetCoinHotData() ([]dto_cache.IntelligenceTokenCache, error) {
+	data, err := getCoinHotDataCache()
 	if err != nil {
 		return nil, err
 	}
-	return cache.Coins, nil
+	return data, nil
 }
 
-// DeleteCoinHotData 删除币热数据
+// DeleteCoinHotData 从热数据中移除指定coin ID（读-改-写）
 func DeleteCoinHotData(coinID string) error {
 	ctx := context.Background()
-	cacheKey := CoinHotDataCacheKeyPrefix + coinID
-	return cache.Del(ctx, cacheKey)
+	cacheKey := CoinHotDataCacheKeyPrefix + "all"
+
+	existing, err := getCoinHotDataCache()
+	if err != nil {
+		return err
+	}
+
+	var filtered []dto_cache.IntelligenceTokenCache
+	for _, c := range existing {
+		if c.ID != coinID {
+			filtered = append(filtered, c)
+		}
+	}
+
+	jsonData, err := json.Marshal(filtered)
+	if err != nil {
+		lr.E().Errorf("Failed to marshal hot data cache: %v", err)
+		return fmt.Errorf("failed to marshal hot data cache: %w", err)
+	}
+
+	return cache.Set(ctx, cacheKey, string(jsonData), CoinHotDataCacheExpiration)
 }

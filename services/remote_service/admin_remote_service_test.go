@@ -1,13 +1,13 @@
 package remote_service
 
 import (
-	"back_ai_gun_data/pkg/model/dto"
+	"back_ai_gun_data/pkg/model/dto_cache"
 	"testing"
 )
 
 func TestCallAdminRankingServiceEmpty(t *testing.T) {
 	// 测试空数组
-	response, err := CallAdminRanking([]dto.IntelligenceCoinCache{})
+	response, err := CallAdminRanking([]dto_cache.IntelligenceTokenCache{})
 	if err != nil {
 		t.Fatalf("CallAdminRanking failed: %v", err)
 	}

@@ -1,31 +1,24 @@
 package remote_service
 
 import (
-	"back_ai_gun_data/pkg/model/dto"
+	"back_ai_gun_data/pkg/model/dto_cache"
 	"sort"
 	"strconv"
 	"time"
 )
 
-func CallAdminRanking(coins []dto.IntelligenceCoinCache) (*dto.AdminRankingResponse, error) {
-	// 模拟admin服务排序接口
-	// 接口：POST /api/admin/ranking
-	// Body: 代币集合
-	// 返回：排序后的代币集合（按市值降序排列）
-
+// CallAdminRanking 对代币集合进行排序并返回排序后的结果（按市值降序）
+func CallAdminRanking(coins []dto_cache.IntelligenceTokenCache) ([]dto_cache.IntelligenceTokenCache, error) {
+	// 空输入直接返回空输出
 	if len(coins) == 0 {
-		return &dto.AdminRankingResponse{
-			Code:    0,
-			Message: "success",
-			Data:    []dto.IntelligenceCoinCache{},
-		}, nil
+		return []dto_cache.IntelligenceTokenCache{}, nil
 	}
 
 	// 复制一份数据进行排序，避免修改原数据
-	rankedCoins := make([]dto.IntelligenceCoinCache, len(coins))
+	rankedCoins := make([]dto_cache.IntelligenceTokenCache, len(coins))
 	copy(rankedCoins, coins)
 
-	// 按市值降序排序（模拟admin服务的排序逻辑）
+	// 按市值降序排序
 	// 优先使用current_market_cap，如果为0则使用warning_market_cap
 	sort.Slice(rankedCoins, func(i, j int) bool {
 		// 获取i的市值
@@ -56,12 +49,5 @@ func CallAdminRanking(coins []dto.IntelligenceCoinCache) (*dto.AdminRankingRespo
 	// 模拟网络延迟
 	time.Sleep(10 * time.Millisecond)
 
-	// 返回排序后的数据
-	response := &dto.AdminRankingResponse{
-		Code:    0,
-		Message: "success",
-		Data:    rankedCoins,
-	}
-
-	return response, nil
+	return rankedCoins, nil
 }

@@ -3,7 +3,7 @@ package services
 import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
-	"back_ai_gun_data/pkg/model/dto"
+	"back_ai_gun_data/pkg/model/dto_cache"
 	"back_ai_gun_data/pkg/model/remote"
 	"back_ai_gun_data/services/remote_service"
 	"context"
@@ -85,8 +85,8 @@ var chainName = map[string]struct{}{
 func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 	cacheData, err := readTokenCache(ctx, intelligenceID)
 	if err != nil {
-		lr.E().Errorf("Failed to read intelligence coin cache: %v", err)
-		return fmt.Errorf("failed to read intelligence coin cache: %w", err)
+		lr.E().Errorf("Failed to read intelligence token cache: %v", err)
+		return fmt.Errorf("failed to read intelligence token cache: %w", err)
 	}
 
 	if len(cacheData) == 0 {
@@ -100,15 +100,15 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 	// 收集所有需要查询的币种信息
 	var queryParams []struct {
 		index int
-		coin  dto.IntelligenceCoinCache
+		token dto_cache.IntelligenceTokenCache
 	}
 
-	for i, coin := range cacheData {
-		if coin.Name != "" {
+	for i, token := range cacheData {
+		if token.Name != "" {
 			queryParams = append(queryParams, struct {
 				index int
-				coin  dto.IntelligenceCoinCache
-			}{i, coin})
+				token dto_cache.IntelligenceTokenCache
+			}{i, token})
 		}
 	}
 
@@ -120,11 +120,11 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 	// 按链分组，批量查询
 	chainGroups := make(map[string][]struct {
 		index int
-		coin  dto.IntelligenceCoinCache
+		token dto_cache.IntelligenceTokenCache
 	})
 
 	for _, param := range queryParams {
-		chainSlug := param.coin.Chain.Slug
+		chainSlug := param.token.Chain.Slug
 		if chainSlug == "" {
 			chainSlug = "eth" // 默认链
 		}
@@ -136,7 +136,7 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 		// 收集该链下所有币的名称
 		var coinNames []string
 		for _, param := range coins {
-			coinNames = append(coinNames, param.coin.Name)
+			coinNames = append(coinNames, param.token.Name)
 		}
 
 		// 批量查询该链下的所有币
@@ -165,7 +165,7 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 
 		// 更新每个币的市场信息
 		for _, param := range coins {
-			coin := param.coin
+			coin := param.token
 			index := param.index
 
 			// 优先使用合约地址匹配，如果没有合约地址则使用名称匹配
@@ -222,26 +222,26 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 
 				updatedCount++
 			} else {
-				lr.E().Errorf("No GMGN data found for coin: %s (chain: %s)", coin.Name, chainSlug)
+				lr.E().Errorf("No GMGN data found for token: %s (chain: %s)", coin.Name, chainSlug)
 			}
 		}
 	}
 
 	// 将更新后的数据写回缓存
 	if err := writeTokenCache(ctx, intelligenceID, cacheData); err != nil {
-		lr.E().Errorf("Failed to write intelligence coin cache: %v", err)
-		return fmt.Errorf("failed to write intelligence coin cache: %w", err)
+		lr.E().Errorf("Failed to write intelligence token cache: %v", err)
+		return fmt.Errorf("failed to write intelligence token cache: %w", err)
 	}
 
 	//lr.I().Infof("Updated market data for intelligence %s: %d/%d coins", intelligenceID, updatedCount, len(cacheData))
 	return nil
 }
 
-func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
+func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
 	return readTokenCache(ctx, intelligenceID)
 }
 
-func readTokenCache(ctx context.Context, intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
+func readTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
 	cacheData, err := cache.Get(ctx, cacheKey)
@@ -249,13 +249,13 @@ func readTokenCache(ctx context.Context, intelligenceID string) ([]dto.Intellige
 		// 如果缓存不存在，返回空数据而不是错误
 		if err.Error() == "redis: nil" {
 			lr.E().Errorf("Cache not found for intelligence %s, returning empty data", intelligenceID)
-			return []dto.IntelligenceCoinCache{}, nil
+			return []dto_cache.IntelligenceTokenCache{}, nil
 		}
 		return nil, fmt.Errorf("failed to get cache data: %w", err)
 	}
 
 	// 直接解析为币数组
-	var coins []dto.IntelligenceCoinCache
+	var coins []dto_cache.IntelligenceTokenCache
 	if err := json.Unmarshal([]byte(cacheData), &coins); err != nil {
 		lr.E().Errorf("Failed to unmarshal cache data: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
@@ -264,13 +264,13 @@ func readTokenCache(ctx context.Context, intelligenceID string) ([]dto.Intellige
 	return coins, nil
 }
 
-func writeTokenCache(ctx context.Context, intelligenceID string, coins []dto.IntelligenceCoinCache) error {
+func writeTokenCache(ctx context.Context, intelligenceID string, coins []dto_cache.IntelligenceTokenCache) error {
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
 	data, err := json.Marshal(coins)
 	if err != nil {
-		lr.E().Errorf("Failed to marshal intelligence coin cache: %v", err)
-		return fmt.Errorf("failed to marshal intelligence coin cache: %w", err)
+		lr.E().Errorf("Failed to marshal intelligence token cache: %v", err)
+		return fmt.Errorf("failed to marshal intelligence token cache: %w", err)
 	}
 
 	// 写入Redis缓存，设置过期时间为4天
