@@ -26,7 +26,6 @@ var mainIns *Instance
 func Init() {
 	config := GetRedisConfigFromEnv()
 	mainIns = createDataSource(config)
-
 }
 
 // 获取主Redis客户端

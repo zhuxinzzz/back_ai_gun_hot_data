@@ -4,6 +4,7 @@ import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model/dto"
+	"back_ai_gun_data/utils"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -97,4 +98,14 @@ func TestUpdateAdminMarketData(t *testing.T) {
 	intelligenceID := "0198f0a9-0e77-721b-99df-b94e851375d1"
 	err := UpdateAdminMarketData(intelligenceID)
 	assert.NoError(t, err)
+}
+
+func Test_readIntelligenceCoinCacheFromRedis(t *testing.T) {
+	lr.Init()
+	cache.Init()
+	intelligenceID := "0198f0a9-0e77-721b-99df-b94e851375d1"
+
+	res, err := readIntelligenceCoinCacheFromRedis(intelligenceID)
+	assert.NoError(t, err)
+	t.Log(utils.ToJson(res))
 }
