@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
-func QueryTokens(params remote.TokenQueryParams) (*remote.TokenQueryResponse, error) {
-	return QueryTokensWithContext(context.Background(), params)
+func QueryTokens(ctx context.Context, params remote.TokenQueryParams) (*remote.TokenQueryResponse, error) {
+	return QueryTokensWithContext(ctx, params)
 }
 
 func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams) (*remote.TokenQueryResponse, error) {
@@ -29,8 +30,18 @@ func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams)
 	}
 
 	apiURL := GetHost() + "/api/v1/ai/tokens"
+	// 手动构建查询字符串，保留空格
 	if len(queryParams) > 0 {
-		apiURL += "?" + queryParams.Encode()
+		pairs := make([]string, 0, len(queryParams))
+		for key, values := range queryParams {
+			for _, value := range values {
+				// 使用 url.QueryEscape 保留空格为 %20
+				escapedKey := url.QueryEscape(key)
+				escapedValue := url.QueryEscape(value)
+				pairs = append(pairs, escapedKey+"="+escapedValue)
+			}
+		}
+		apiURL += "?" + strings.Join(pairs, "&")
 	}
 
 	// 发送请求
@@ -59,10 +70,10 @@ func QueryTokensWithContext(ctx context.Context, params remote.TokenQueryParams)
 }
 
 func QueryTokensByName(name string, chain string) ([]remote.GmGnToken, error) {
-	return QueryTokensByNameWithLimit(name, chain, 10) // 默认10，保持向后兼容
+	return QueryTokensByNameWithLimit(nil, name, chain, 10) // 默认10，保持向后兼容
 }
 
-func QueryTokensByNameWithLimit(name string, chain string, limit int) ([]remote.GmGnToken, error) {
+func QueryTokensByNameWithLimit(ctx context.Context, name string, chain string, limit int) ([]remote.GmGnToken, error) {
 	params := remote.TokenQueryParams{
 		Q:     name,  // 查询关键字,全称、简称、地址,多个查询用逗号分隔
 		Chain: chain, // 指定链
@@ -70,7 +81,7 @@ func QueryTokensByNameWithLimit(name string, chain string, limit int) ([]remote.
 		Fuzzy: 1,     // 是否为模糊匹配,1:是,0:否 默认值: 1
 	}
 
-	resp, err := QueryTokens(params)
+	resp, err := QueryTokens(ctx, params)
 	if err != nil {
 		lr.E().Error("QueryTokensByNameWithLimit failed: ", err)
 		return nil, err
@@ -92,7 +103,7 @@ func QueryTokensByAddress(address string, chain string) ([]remote.GmGnToken, err
 		Fuzzy: 0, // 地址查询不使用模糊匹配
 	}
 
-	resp, err := QueryTokens(params)
+	resp, err := QueryTokens(nil, params)
 	if err != nil {
 		lr.E().Error("QueryTokensByAddress failed: ", err)
 		return nil, err

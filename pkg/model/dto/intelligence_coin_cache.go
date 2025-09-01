@@ -58,7 +58,7 @@ type CoinMarketStats struct {
 	WarningMarketCap    string `json:"warning_market_cap"`    // 预警市值，不变动
 	CurrentPriceUSD     string `json:"current_price_usd"`     // 当前价格，从gmgn获取
 	CurrentMarketCap    string `json:"current_market_cap"`    // 当前市值，从gmgn获取
-	HighestIncreaseRate string `json:"highest_increase_rate"` // 预警涨幅，历史最大值
+	HighestIncreaseRate string `json:"highest_increase_rate"` // 预警涨幅，历史最大值 当前市值除以预警市值
 }
 
 // ChainInfo 链信息
@@ -67,12 +67,4 @@ type ChainInfo struct {
 	Name string `json:"name"`
 	Slug string `json:"slug"`
 	Logo string `json:"logo"`
-}
-
-// IntelligenceCoinCacheData 情报-币缓存数据结构
-type IntelligenceCoinCacheData struct {
-	IntelligenceID string                  `json:"intelligence_id"`
-	Coins          []IntelligenceCoinCache `json:"coins"`
-	CreatedAt      time.Time               `json:"created_at"`
-	UpdatedAt      time.Time               `json:"updated_at"`
 }

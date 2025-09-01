@@ -51,7 +51,7 @@ func ProcessCoinHotData(intelligenceID string, coins []dto.IntelligenceCoinCache
 // updateAdminMarketData 更新admin服务缓存中的市场信息
 func updateAdminMarketData(intelligenceID string, coins []dto.IntelligenceCoinCache) error {
 	// 调用admin服务更新市场信息
-	if err := remote_service.UpdateAdminMarketData(intelligenceID); err != nil {
+	if err := remote_service.UpdateAdminMarketData(nil, intelligenceID); err != nil {
 		lr.E().Errorf("Failed to update admin market data: %v", err)
 		return fmt.Errorf("failed to update admin market data: %w", err)
 	}

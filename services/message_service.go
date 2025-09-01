@@ -30,7 +30,7 @@ func ProcessMessageData(data *model.MessageData) error {
 func maintainAdminMarketData(data *model.MessageData, entities map[string]interface{}) error {
 	// 直接调用admin服务更新市场信息
 	// admin服务会从缓存读取数据，然后使用GMGN更新市场信息
-	if err := remote_service.UpdateAdminMarketData(data.ID); err != nil {
+	if err := remote_service.UpdateAdminMarketData(nil, data.ID); err != nil {
 		return fmt.Errorf("admin update failed: %w", err)
 	}
 
@@ -41,7 +41,7 @@ func processCoinRankingAndHotData(data *model.MessageData, entities map[string]i
 	// 阶段二：市场数据enriquecimiento与首次排名
 
 	// 1. 更新admin服务缓存中的市场信息
-	if err := remote_service.UpdateAdminMarketData(data.ID); err != nil {
+	if err := remote_service.UpdateAdminMarketData(nil, data.ID); err != nil {
 		lr.E().Errorf("Failed to update admin market data: %v", err)
 		// 继续执行，不中断流程
 	}

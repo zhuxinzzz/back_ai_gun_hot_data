@@ -22,9 +22,6 @@ const (
 
 	// 缓存过期时间：4天
 	CacheExpiration = 4 * 24 * time.Hour
-
-	// 持久化触发时间：3天
-	PersistenceTriggerTime = 3 * 24 * time.Hour
 )
 
 func ProcessIntelligenceCoinCache(data *model.MessageData) error {
@@ -73,8 +70,8 @@ func extractCoinsFromMessage(data *model.MessageData) ([]dto.IntelligenceCoinCac
 				Slug: "eth",
 				Logo: "assets/chain/eth.png",
 			},
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt: dto.CustomTime{Time: time.Now()},
+			UpdatedAt: dto.CustomTime{Time: time.Now()},
 		}
 		coins = append(coins, coin)
 	}
@@ -103,8 +100,8 @@ func extractCoinsFromMessage(data *model.MessageData) ([]dto.IntelligenceCoinCac
 				Slug: "eth",
 				Logo: "assets/chain/eth.png",
 			},
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt: dto.CustomTime{Time: time.Now()},
+			UpdatedAt: dto.CustomTime{Time: time.Now()},
 		}
 		coins = append(coins, coin)
 	}
@@ -120,19 +117,15 @@ func generateSymbol(name string) string {
 	return name
 }
 
-// updateIntelligenceCoinCache 更新情报-币缓存
 func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.IntelligenceCoinCache) error {
-	intelligenceCoinCache, err := getIntelligenceCoinCache(intelligenceID)
+	// 获取现有缓存
+	existingCoins, err := getIntelligenceCoinCache(intelligenceID)
 	if err != nil {
 		lr.E().Errorf("Failed to get existing cache for intelligence %s: %v", intelligenceID, err)
-		// 如果获取失败，创建新的缓存数据
-		intelligenceCoinCache = &dto.IntelligenceCoinCacheData{
-			IntelligenceID: intelligenceID,
-			Coins:          []dto.IntelligenceCoinCache{},
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
-		}
+		// 如果获取失败，使用空数组
+		existingCoins = []dto.IntelligenceCoinCache{}
 	}
+
 	// 调用GMGN服务更新市场信息
 	if err := updateMarketInfoFromGMGN(newCoins); err != nil {
 		lr.E().Errorf("Failed to update market info from GMGN for intelligence %s: %v", intelligenceID, err)
@@ -145,48 +138,33 @@ func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto.Intellige
 		// 热数据处理失败不影响主缓存更新流程
 	}
 
-	existingCoins := make(map[string]dto.IntelligenceCoinCache)
-	for _, coin := range intelligenceCoinCache.Coins {
-		existingCoins[coin.Name] = coin
+	// 创建现有币的映射
+	existingCoinsMap := make(map[string]dto.IntelligenceCoinCache)
+	for _, coin := range existingCoins {
+		existingCoinsMap[coin.Name] = coin
 	}
 
 	// 添加或更新新币信息
 	for _, newCoin := range newCoins {
-		if existingCoin, exists := existingCoins[newCoin.Name]; exists {
+		if existingCoin, exists := existingCoinsMap[newCoin.Name]; exists {
 			// 更新现有币信息，保留原有的市场数据
 			newCoin.Stats = existingCoin.Stats
-			newCoin.UpdatedAt = time.Now()
+			newCoin.UpdatedAt = dto.CustomTime{Time: time.Now()}
 		}
-		existingCoins[newCoin.Name] = newCoin
+		existingCoinsMap[newCoin.Name] = newCoin
 	}
 
 	// 转换回切片
 	var updatedCoins []dto.IntelligenceCoinCache
-	for _, coin := range existingCoins {
+	for _, coin := range existingCoinsMap {
 		updatedCoins = append(updatedCoins, coin)
 	}
 
-	// 更新缓存数据
-	updatedData := &dto.IntelligenceCoinCacheData{
-		IntelligenceID: intelligenceID,
-		Coins:          updatedCoins,
-		CreatedAt:      intelligenceCoinCache.CreatedAt,
-		UpdatedAt:      time.Now(),
-	}
-
-	// 检查是否需要持久化
-	if shouldPersist(updatedData) {
-		if err := persistIntelligenceCoinData(updatedData); err != nil {
-			lr.E().Errorf("Failed to persist intelligence coin data for %s: %v", intelligenceID, err)
-			// 持久化失败不影响缓存更新
-		}
-	}
-
 	// 更新缓存
-	return setIntelligenceCoinCache(intelligenceID, updatedData)
+	return setIntelligenceCoinCache(intelligenceID, updatedCoins)
 }
 
-func getIntelligenceCoinCache(intelligenceID string) (*dto.IntelligenceCoinCacheData, error) {
+func getIntelligenceCoinCache(intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
 	ctx := context.Background()
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
@@ -195,17 +173,17 @@ func getIntelligenceCoinCache(intelligenceID string) (*dto.IntelligenceCoinCache
 		return nil, err
 	}
 
-	var data dto.IntelligenceCoinCacheData
+	var data []dto.IntelligenceCoinCache
 	if err := json.Unmarshal([]byte(cacheData), &data); err != nil {
 		lr.E().Errorf("Failed to unmarshal cache data: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
 	}
 
-	return &data, nil
+	return data, nil
 }
 
 // setIntelligenceCoinCache 设置情报-币缓存
-func setIntelligenceCoinCache(intelligenceID string, data *dto.IntelligenceCoinCacheData) error {
+func setIntelligenceCoinCache(intelligenceID string, data []dto.IntelligenceCoinCache) error {
 	ctx := context.Background()
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
@@ -218,26 +196,13 @@ func setIntelligenceCoinCache(intelligenceID string, data *dto.IntelligenceCoinC
 	return cache.Set(ctx, cacheKey, string(jsonData), CacheExpiration)
 }
 
-// shouldPersist 判断是否需要持久化
-func shouldPersist(data *dto.IntelligenceCoinCacheData) bool {
-	// 如果缓存时间超过3天，触发持久化
-	return time.Since(data.CreatedAt) >= PersistenceTriggerTime
-}
-
-// persistIntelligenceCoinData 持久化情报-币数据
-func persistIntelligenceCoinData(data *dto.IntelligenceCoinCacheData) error {
-	// TODO: 实现持久化逻辑
-	// 这里可以存储到数据库、文件系统或其他持久化存储
-	return nil
-}
-
 // GetIntelligenceCoins 获取情报关联的币信息
 func GetIntelligenceCoins(intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
 	data, err := getIntelligenceCoinCache(intelligenceID)
 	if err != nil {
 		return nil, err
 	}
-	return data.Coins, nil
+	return data, nil
 }
 
 // DeleteIntelligenceCoinCache 删除情报-币缓存
@@ -288,7 +253,7 @@ func updateMarketInfoFromGMGN(coins []dto.IntelligenceCoinCache) error {
 				if originalCoin.Name == coin.Name {
 					coins[j].Stats.CurrentPriceUSD = token.PriceUSD
 					coins[j].Stats.CurrentMarketCap = token.MarketCap
-					coins[j].UpdatedAt = time.Now()
+					coins[j].UpdatedAt = dto.CustomTime{Time: time.Now()}
 
 					break
 				}

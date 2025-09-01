@@ -1,6 +1,7 @@
 package main
 
 import (
+	"back_ai_gun_data/services/remote_service"
 	"back_ai_gun_data/utils"
 	"context"
 	"fmt"
@@ -26,8 +27,8 @@ func main() {
 	}()
 
 	lr.Init()
-
 	cache.Init()
+	remote_service.Init()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

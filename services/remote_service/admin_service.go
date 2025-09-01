@@ -18,9 +18,73 @@ const (
 	IntelligenceCoinCacheKeyPrefix = "dogex:intelligence:latest_entities:intelligence_id:"
 )
 
+var chainName = map[string]struct{}{
+	"Base":             {},
+	"Polygon zkEVM":    {},
+	"Fantom":           {},
+	"Blast":            {},
+	"Arbitrum":         {},
+	"Scroll":           {},
+	"Gnosis":           {},
+	"Avalanche":        {},
+	"Polygon":          {},
+	"BSC":              {},
+	"Optimism":         {},
+	"Solana":           {},
+	"zkSync":           {},
+	"Linea":            {},
+	"Moonbeam":         {},
+	"Metis":            {},
+	"Immutable zkEVM":  {},
+	"Lisk":             {},
+	"Soneium":          {},
+	"Fuse":             {},
+	"Lens":             {},
+	"Mode":             {},
+	"Gravity":          {},
+	"Cronos":           {},
+	"Abstract":         {},
+	"Taiko":            {},
+	"Boba":             {},
+	"Unichain":         {},
+	"opBNB":            {},
+	"Swellchain":       {},
+	"Aurora":           {},
+	"Sei":              {},
+	"Sonic":            {},
+	"Moonriver":        {},
+	"Corn":             {},
+	"zkfair":           {},
+	"Bitcoin":          {},
+	"Conflux":          {},
+	"Celo":             {},
+	"Sui":              {},
+	"binancecoin":      {},
+	"World Chain":      {},
+	"the-open-network": {},
+	//"Ink":                     {},
+	"BOB":                     {},
+	"Superposition":           {},
+	"kucoin-community-chain":  {},
+	"arbitrum-nova":           {},
+	"XDC":                     {},
+	"Apechain":                {},
+	"Kaia":                    {},
+	"Avalanche X-Chain":       {},
+	"Etherlink":               {},
+	"BNB Beacon Chain (BEP2)": {},
+	"Starknet":                {},
+	"Rootstock":               {},
+	"Berachain":               {},
+	"Manta Pacific":           {},
+	"Mantle":                  {},
+	"Ethereum":                {},
+	"HyperEVM":                {},
+}
+
 // UpdateAdminMarketData 更新admin服务缓存中的市场信息
 // 从缓存读取数据，使用GMGN查询更新市场信息，然后写回缓存
-func UpdateAdminMarketData(intelligenceID string) error {
+func UpdateAdminMarketData(ctx context.Context, intelligenceID string) error {
 	cacheData, err := readIntelligenceCoinCacheFromRedis(intelligenceID)
 	if err != nil {
 		lr.E().Errorf("Failed to read intelligence coin cache: %v", err)
@@ -84,7 +148,12 @@ func UpdateAdminMarketData(intelligenceID string) error {
 		if limit < 10 {
 			limit = 10 // 最少10个
 		}
-		tokens, err := QueryTokensByNameWithLimit(namesStr, chainSlug, limit)
+
+		// 过滤掉不支持的链
+		if _, exists := chainName[chainSlug]; !exists {
+			chainSlug = ""
+		}
+		tokens, err := QueryTokensByNameWithLimit(ctx, namesStr, chainSlug, limit)
 		if err != nil {
 			lr.E().Errorf("Failed to batch query GMGN for chain %s: %v", chainSlug, err)
 			continue
@@ -166,7 +235,7 @@ func UpdateAdminMarketData(intelligenceID string) error {
 		return fmt.Errorf("failed to write intelligence coin cache: %w", err)
 	}
 
-	lr.I().Infof("Updated market data for intelligence %s: %d/%d coins", intelligenceID, updatedCount, len(cacheData))
+	//lr.I().Infof("Updated market data for intelligence %s: %d/%d coins", intelligenceID, updatedCount, len(cacheData))
 	return nil
 }
 
@@ -265,16 +334,8 @@ func writeIntelligenceCoinCacheToRedis(intelligenceID string, coins []dto.Intell
 	ctx := context.Background()
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
-	// 构建缓存数据结构
-	cacheData := dto.IntelligenceCoinCacheData{
-		IntelligenceID: intelligenceID,
-		Coins:          coins,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
-
-	// 序列化数据
-	data, err := json.Marshal(cacheData)
+	// 直接序列化币数组
+	data, err := json.Marshal(coins)
 	if err != nil {
 		lr.E().Errorf("Failed to marshal intelligence coin cache: %v", err)
 		return fmt.Errorf("failed to marshal intelligence coin cache: %w", err)

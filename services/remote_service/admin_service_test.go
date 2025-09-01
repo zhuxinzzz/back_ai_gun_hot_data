@@ -92,12 +92,26 @@ func TestCallAdminRankingServiceEmpty(t *testing.T) {
 }
 
 func TestUpdateAdminMarketData(t *testing.T) {
-	cache.Init()
 	lr.Init()
+	cache.Init()
+	Init()
 
 	intelligenceID := "0198f0a9-0e77-721b-99df-b94e851375d1"
-	err := UpdateAdminMarketData(intelligenceID)
+
+	cacheTokens, err := readIntelligenceCoinCacheFromRedis(intelligenceID)
 	assert.NoError(t, err)
+
+	err = UpdateAdminMarketData(nil, intelligenceID)
+	assert.NoError(t, err)
+
+	cacheTokens2, err := readIntelligenceCoinCacheFromRedis(intelligenceID)
+	assert.NoError(t, err)
+
+	if cacheTokens != nil && cacheTokens2 != nil {
+		marketCap := cacheTokens2[0].Stats.CurrentMarketCap
+		newMarketCap := cacheTokens2[0].Stats.CurrentMarketCap
+		assert.True(t, marketCap != newMarketCap)
+	}
 }
 
 func Test_readIntelligenceCoinCacheFromRedis(t *testing.T) {
