@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"back_ai_gun_data/pkg/model/remote"
 )
 
 // IntelligenceTokenCache 情报-币缓存模型
@@ -102,4 +104,30 @@ func (c *IntelligenceTokenCache) GetUniqueKey() string {
 	addr := strings.ToLower(strings.TrimPrefix(c.ContractAddress, "0x"))
 	chainSlug := strings.ToLower(c.Chain.Slug)
 	return fmt.Sprintf("%s:%s:%s", strings.ToLower(c.Name), addr, chainSlug)
+}
+
+// FindMatchingToken 在远程token列表中查找匹配的token
+// 优先使用合约地址匹配，失败则使用名称匹配
+func (c *IntelligenceTokenCache) FindMatchingToken(remoteTokens []remote.GmGnToken) *remote.GmGnToken {
+	if c == nil {
+		return nil
+	}
+
+	// 优先使用合约地址精确匹配
+	if c.ContractAddress != "" {
+		for _, token := range remoteTokens {
+			if strings.EqualFold(token.Address, c.ContractAddress) {
+				return &token
+			}
+		}
+	}
+
+	// 如果合约地址匹配失败，使用名称匹配
+	for _, token := range remoteTokens {
+		if strings.EqualFold(token.Name, c.Name) {
+			return &token
+		}
+	}
+
+	return nil
 }

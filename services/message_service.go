@@ -30,6 +30,16 @@ func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 	return nil
 }
 
+// 过滤支持的链，并按name+network去重
+var supportedChains = map[string]struct{}{
+	"solana":   {},
+	"bsc":      {},
+	"ethereum": {},
+	"base":     {},
+}
+
+var top3 = 3
+
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
 	tokens, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {
@@ -42,12 +52,13 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 	}
 
 	existingNames := make(map[string]struct{}, len(tokens))
-	for _, c := range tokens {
-		if c.Name != "" {
-			existingNames[c.Name] = struct{}{}
+	for _, t := range tokens {
+		if t.Name != "" {
+			existingNames[t.Name] = struct{}{}
 		}
 	}
 
+	// 从消息中提取token名称
 	newNameSet := getTokenNameSet(entities)
 	var missingNames []string
 	for name := range newNameSet {
@@ -71,14 +82,6 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		if qErr != nil {
 			lr.E().Errorf("Batch GMGN query failed for new tokens: %v", qErr)
 			gmgnTokens = nil
-		}
-
-		// 过滤支持的链，并按name+network去重
-		supportedChains := map[string]struct{}{
-			"solana":   {},
-			"bsc":      {},
-			"ethereum": {},
-			"base":     {},
 		}
 
 		gmgnByNameAndNetwork := make(map[string]remote.GmGnToken)
@@ -144,21 +147,14 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		return fmt.Errorf("failed to call admin ranking service: %w", err)
 	}
 
-	// 4. 只有当新token进入前三名时，才将合并后的完整数据写回情报缓存
-	// 检查前三名中是否有新增token
 	hasNewTokenInTop3 := false
-	top3 := 3
 	if len(rankedCoins) < top3 {
 		top3 = len(rankedCoins)
 	}
-
-	// 构建旧缓存的唯一标识映射，用于快速判断
 	oldTokenKeys := make(map[string]dto_cache.IntelligenceTokenCache, len(tokens))
 	for _, t := range tokens {
 		oldTokenKeys[t.GetUniqueKey()] = t
 	}
-
-	// 检查前三名中是否有新增token
 	for i := 0; i < top3; i++ {
 		if _, exists := oldTokenKeys[rankedCoins[i].GetUniqueKey()]; !exists {
 			hasNewTokenInTop3 = true
@@ -166,7 +162,6 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		}
 	}
 
-	// 只有新token进入前三名时才更新缓存
 	if hasNewTokenInTop3 {
 		// 构建最终缓存：按照admin排序结果，保留旧的全部 + 新的前三
 		finalCache := make([]dto_cache.IntelligenceTokenCache, 0, len(rankedCoins))
@@ -174,11 +169,9 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		// 遍历排序后的结果，按顺序添加
 		for _, token := range rankedCoins {
 			if _, exists := oldTokenKeys[token.GetUniqueKey()]; exists {
-				// 旧token，直接添加（保持排序后的顺序）
 				finalCache = append(finalCache, token)
 			} else {
-				// 新token，只有在前三名才添加
-				if len(finalCache) < 3 {
+				if len(finalCache) < top3 {
 					finalCache = append(finalCache, token)
 				}
 			}
@@ -188,10 +181,8 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 			lr.E().Errorf("Failed to write updated token cache: %v", err)
 			// 缓存写入失败不影响后续流程，继续处理热点数据
 		}
-		lr.I().Infof("Updated cache with admin ranking order: %d tokens for %s", len(finalCache), data.ID)
 	}
 
-	// 5. 处理热点数据（仅追加新的前三名）
 	if err := ProcessCoinHotData(data.ID, rankedCoins); err != nil {
 		lr.E().Errorf("Failed to process token hot data: %v", err)
 		return fmt.Errorf("failed to process token hot data: %w", err)

@@ -4,7 +4,6 @@ import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model/dto_cache"
-	"back_ai_gun_data/pkg/model/remote"
 	"back_ai_gun_data/services/remote_service"
 	"context"
 	"encoding/json"
@@ -88,9 +87,8 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 		lr.E().Errorf("Failed to read intelligence token cache: %v", err)
 		return fmt.Errorf("failed to read intelligence token cache: %w", err)
 	}
-
 	if len(cacheData) == 0 {
-		lr.E().Errorf("No coins found in cache for intelligence %s", intelligenceID)
+		lr.E().Errorf("No cacheTokens found in cache for intelligence %s", intelligenceID)
 		return nil
 	}
 
@@ -113,7 +111,7 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 	}
 
 	if len(queryParams) == 0 {
-		lr.E().Errorf("No valid coins to query for intelligence %s", intelligenceID)
+		lr.E().Errorf("No valid cacheTokens to query for intelligence %s", intelligenceID)
 		return nil
 	}
 
@@ -132,10 +130,10 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 	}
 
 	// 为每个链批量查询
-	for chainSlug, coins := range chainGroups {
+	for chainSlug, cacheTokens := range chainGroups {
 		// 收集该链下所有币的名称
 		var coinNames []string
-		for _, param := range coins {
+		for _, param := range cacheTokens {
 			coinNames = append(coinNames, param.token.Name)
 		}
 
@@ -151,42 +149,19 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 		if _, exists := chainName[chainSlug]; !exists {
 			chainSlug = ""
 		}
-		tokens, err := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, chainSlug, limit)
+		remoteTokens, err := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, chainSlug, limit)
 		if err != nil {
 			lr.E().Errorf("Failed to batch query GMGN for chain %s: %v", chainSlug, err)
 			continue
 		}
 
-		// 创建token映射，用于快速查找
-		tokenMap := make(map[string]remote.GmGnToken)
-		for _, token := range tokens {
-			tokenMap[token.Name] = token
-		}
-
 		// 更新每个币的市场信息
-		for _, param := range coins {
-			coin := param.token
-			index := param.index
+		for _, cacheToken := range cacheTokens {
+			cacheTokenIns := cacheToken.token
+			index := cacheToken.index
 
-			// 优先使用合约地址匹配，如果没有合约地址则使用名称匹配
-			var matchedToken *remote.GmGnToken
-
-			if coin.ContractAddress != "" {
-				// 使用合约地址精确匹配
-				for _, token := range tokens {
-					if strings.EqualFold(token.Address, coin.ContractAddress) {
-						matchedToken = &token
-						break
-					}
-				}
-			}
-
-			// 如果合约地址匹配失败，使用名称匹配
-			if matchedToken == nil {
-				if token, exists := tokenMap[coin.Name]; exists {
-					matchedToken = &token
-				}
-			}
+			// 使用提取的匹配方法
+			matchedToken := cacheTokenIns.FindMatchingToken(remoteTokens)
 
 			// 更新市场信息
 			if matchedToken != nil {
@@ -195,15 +170,15 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 				cacheData[index].UpdatedAt.Time = time.Now()
 
 				// 计算预警涨幅：当前市值 ÷ 预警市值
-				if matchedToken.MarketCap != "0" && coin.Stats.WarningMarketCap != "0" {
+				if matchedToken.MarketCap != "0" && cacheTokenIns.Stats.WarningMarketCap != "0" {
 					currentMarketCap, err1 := strconv.ParseFloat(matchedToken.MarketCap, 64)
-					warningMarketCap, err2 := strconv.ParseFloat(coin.Stats.WarningMarketCap, 64)
+					warningMarketCap, err2 := strconv.ParseFloat(cacheTokenIns.Stats.WarningMarketCap, 64)
 
 					if err1 == nil && err2 == nil && warningMarketCap > 0 {
 						currentIncreaseRate := currentMarketCap / warningMarketCap
 
 						// 获取历史最高涨幅
-						highestIncreaseRate, err3 := strconv.ParseFloat(coin.Stats.HighestIncreaseRate, 64)
+						highestIncreaseRate, err3 := strconv.ParseFloat(cacheTokenIns.Stats.HighestIncreaseRate, 64)
 						if err3 != nil {
 							highestIncreaseRate = 0
 						}
@@ -222,7 +197,7 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 
 				updatedCount++
 			} else {
-				lr.E().Errorf("No GMGN data found for token: %s (chain: %s)", coin.Name, chainSlug)
+				lr.E().Errorf("No GMGN data found for token: %s (chain: %s)", cacheTokenIns.Name, chainSlug)
 			}
 		}
 	}
@@ -233,7 +208,7 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 		return fmt.Errorf("failed to write intelligence token cache: %w", err)
 	}
 
-	//lr.I().Infof("Updated market data for intelligence %s: %d/%d coins", intelligenceID, updatedCount, len(cacheData))
+	//lr.I().Infof("Updated market data for intelligence %s: %d/%d cacheTokens", intelligenceID, updatedCount, len(cacheData))
 	return nil
 }
 
