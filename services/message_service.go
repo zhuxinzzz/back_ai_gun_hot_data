@@ -41,18 +41,18 @@ var supportedChains = map[string]struct{}{
 var top3 = 3
 
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
-	tokens, err := ReadTokenCache(ctx, data.ID)
+	cacheTokens, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {
 		lr.E().Errorf("Failed to read intelligence token cache: %v", err)
 		return fmt.Errorf("failed to read intelligence token cache: %w", err)
 	}
-	if len(tokens) == 0 {
-		lr.I().Infof("No tokens found in cache for intelligence %s", data.ID)
+	if len(cacheTokens) == 0 {
+		lr.I().Infof("No cacheTokens found in cache for intelligence %s", data.ID)
 		return nil
 	}
 
-	existingNames := make(map[string]struct{}, len(tokens))
-	for _, t := range tokens {
+	existingNames := make(map[string]struct{}, len(cacheTokens))
+	for _, t := range cacheTokens {
 		if t.Name != "" {
 			existingNames[t.Name] = struct{}{}
 		}
@@ -67,8 +67,8 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		}
 	}
 
-	combined := make([]dto_cache.IntelligenceTokenCache, 0, len(tokens)+len(missingNames))
-	combined = append(combined, tokens...) // 旧币放在前面以便稳定排序时保序
+	combined := make([]dto_cache.IntelligenceTokenCache, 0, len(cacheTokens)+len(missingNames))
+	combined = append(combined, cacheTokens...) // 旧币放在前面以便稳定排序时保序
 
 	// 2.3 为缺失的名称批量查询GMGN数据，尽量补齐市值
 	if len(missingNames) > 0 {
@@ -78,14 +78,14 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		if limit < 10 {
 			limit = 10
 		}
-		gmgnTokens, qErr := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, "", limit)
+		remoteTokens, qErr := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, "", limit)
 		if qErr != nil {
-			lr.E().Errorf("Batch GMGN query failed for new tokens: %v", qErr)
-			gmgnTokens = nil
+			lr.E().Errorf("Batch GMGN query failed for new cacheTokens: %v", qErr)
+			remoteTokens = nil
 		}
 
 		gmgnByNameAndNetwork := make(map[string]remote.GmGnToken)
-		for _, t := range gmgnTokens {
+		for _, t := range remoteTokens {
 			// 只保留支持的链
 			if _, supported := supportedChains[strings.ToLower(t.Network)]; supported {
 				key := t.Name + ":" + strings.ToLower(t.Network)
@@ -99,10 +99,10 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 			newToken := dto_cache.IntelligenceTokenCache{
 				ID: utils.GenerateUUIDV7(),
 				//EntityID: utils.GenerateUUIDV7(),
-				Name:      name,
-				Symbol:    generateSymbol(name),
-				Standard:  stringPtr("ERC20"),
-				Decimals:  18,
+				Name: name,
+				//Symbol:    generateSymbol(name),
+				Standard: stringPtr("ERC20"),
+				//Decimals:  18,
 				Stats:     dto_cache.CoinMarketStats{},
 				Chain:     dto_cache.ChainInfo{},
 				CreatedAt: dto_cache.CustomTime{Time: now},
@@ -151,8 +151,8 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 	if len(rankedCoins) < top3 {
 		top3 = len(rankedCoins)
 	}
-	oldTokenKeys := make(map[string]dto_cache.IntelligenceTokenCache, len(tokens))
-	for _, t := range tokens {
+	oldTokenKeys := make(map[string]dto_cache.IntelligenceTokenCache, len(cacheTokens))
+	for _, t := range cacheTokens {
 		oldTokenKeys[t.GetUniqueKey()] = t
 	}
 	for i := 0; i < top3; i++ {

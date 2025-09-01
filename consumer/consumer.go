@@ -42,7 +42,7 @@ func startConsumer(ctx context.Context) error {
 		return fmt.Errorf("qos failed: %w", err)
 	}
 
-	queueName := getEnv("QUEUE_NAME", "etl-entity-data")
+	queueName := getEnv("QUEUE_NAME", "dogex-sub-dev")
 	_, err = ch.QueueDeclare(queueName, true, false, false, false, nil)
 	if err != nil {
 		lr.E().Errorf("Failed to declare queue: %v", err)
