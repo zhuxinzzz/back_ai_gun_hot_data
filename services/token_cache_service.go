@@ -4,12 +4,9 @@ import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model/dto_cache"
-	"back_ai_gun_data/services/remote_service"
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -81,141 +78,10 @@ var chainName = map[string]struct{}{
 	"HyperEVM":                {},
 }
 
-func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
-	cacheData, err := ReadTokenCache(ctx, intelligenceID)
-	if err != nil {
-		lr.E().Errorf("Failed to read intelligence token cache: %v", err)
-		return fmt.Errorf("failed to read intelligence token cache: %w", err)
-	}
-	if len(cacheData) == 0 {
-		lr.E().Errorf("No cacheTokens found in cache for intelligence %s", intelligenceID)
-		return nil
-	}
-
-	// 批量获取GMGN数据
-	updatedCount := 0
-
-	// 收集所有需要查询的币种信息
-	var queryParams []struct {
-		index int
-		token dto_cache.IntelligenceTokenCache
-	}
-
-	for i, token := range cacheData {
-		if token.Name != "" {
-			queryParams = append(queryParams, struct {
-				index int
-				token dto_cache.IntelligenceTokenCache
-			}{i, token})
-		}
-	}
-
-	if len(queryParams) == 0 {
-		lr.E().Errorf("No valid cacheTokens to query for intelligence %s", intelligenceID)
-		return nil
-	}
-
-	// 按链分组，批量查询
-	chainGroups := make(map[string][]struct {
-		index int
-		token dto_cache.IntelligenceTokenCache
-	})
-
-	for _, param := range queryParams {
-		chainSlug := param.token.Chain.Slug
-		if chainSlug == "" {
-			chainSlug = "eth" // 默认链
-		}
-		chainGroups[chainSlug] = append(chainGroups[chainSlug], param)
-	}
-
-	// 为每个链批量查询
-	for chainSlug, cacheTokens := range chainGroups {
-		// 收集该链下所有币的名称
-		var coinNames []string
-		for _, param := range cacheTokens {
-			coinNames = append(coinNames, param.token.Name)
-		}
-
-		// 批量查询该链下的所有币
-		namesStr := strings.Join(coinNames, ",")
-		// 根据币种数量动态设置Limit，每个币平均3个结果
-		limit := len(coinNames) * 3
-		if limit < 10 {
-			limit = 10 // 最少10个
-		}
-
-		// 过滤掉不支持的链
-		if _, exists := chainName[chainSlug]; !exists {
-			chainSlug = ""
-		}
-		remoteTokens, err := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, chainSlug, limit)
-		if err != nil {
-			lr.E().Errorf("Failed to batch query GMGN for chain %s: %v", chainSlug, err)
-			continue
-		}
-
-		// 更新每个币的市场信息
-		for _, cacheToken := range cacheTokens {
-			cacheTokenIns := cacheToken.token
-			index := cacheToken.index
-
-			// 使用提取的匹配方法
-			matchedToken := cacheTokenIns.FindMatchingToken(remoteTokens)
-
-			// 更新市场信息
-			if matchedToken != nil {
-				cacheData[index].Stats.CurrentPriceUSD = matchedToken.PriceUSD
-				cacheData[index].Stats.CurrentMarketCap = matchedToken.MarketCap
-				cacheData[index].UpdatedAt.Time = time.Now()
-
-				// 计算预警涨幅：当前市值 ÷ 预警市值
-				if matchedToken.MarketCap != "0" && cacheTokenIns.Stats.WarningMarketCap != "0" {
-					currentMarketCap, err1 := strconv.ParseFloat(matchedToken.MarketCap, 64)
-					warningMarketCap, err2 := strconv.ParseFloat(cacheTokenIns.Stats.WarningMarketCap, 64)
-
-					if err1 == nil && err2 == nil && warningMarketCap > 0 {
-						currentIncreaseRate := currentMarketCap / warningMarketCap
-
-						// 获取历史最高涨幅
-						highestIncreaseRate, err3 := strconv.ParseFloat(cacheTokenIns.Stats.HighestIncreaseRate, 64)
-						if err3 != nil {
-							highestIncreaseRate = 0
-						}
-
-						// 更新最高涨幅（取较大值）
-						if currentIncreaseRate > highestIncreaseRate {
-							cacheData[index].Stats.HighestIncreaseRate = fmt.Sprintf("%.6f", currentIncreaseRate)
-						}
-					}
-				}
-
-				// 如果合约地址为空，更新合约地址
-				if cacheData[index].ContractAddress == "" && matchedToken.Address != "" {
-					cacheData[index].ContractAddress = matchedToken.Address
-				}
-
-				updatedCount++
-			} else {
-				lr.E().Errorf("No GMGN data found for token: %s (chain: %s)", cacheTokenIns.Name, chainSlug)
-			}
-		}
-	}
-
-	// 将更新后的数据写回缓存
-	if err := writeTokenCache(ctx, intelligenceID, cacheData); err != nil {
-		lr.E().Errorf("Failed to write intelligence token cache: %v", err)
-		return fmt.Errorf("failed to write intelligence token cache: %w", err)
-	}
-
-	//lr.I().Infof("Updated market data for intelligence %s: %d/%d cacheTokens", intelligenceID, updatedCount, len(cacheData))
-	return nil
-}
-
 func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
-	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
+	key := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
-	cacheData, err := cache.Get(ctx, cacheKey)
+	dataStr, err := cache.Get(ctx, key)
 	if err != nil {
 		// 如果缓存不存在，返回空数据而不是错误
 		if err.Error() == "redis: nil" {
@@ -227,7 +93,7 @@ func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.Int
 
 	// 直接解析为币数组
 	var coins []dto_cache.IntelligenceTokenCache
-	if err := json.Unmarshal([]byte(cacheData), &coins); err != nil {
+	if err := json.Unmarshal([]byte(dataStr), &coins); err != nil {
 		lr.E().Errorf("Failed to unmarshal cache data: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
 	}
@@ -236,16 +102,27 @@ func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.Int
 }
 
 func writeTokenCache(ctx context.Context, intelligenceID string, coins []dto_cache.IntelligenceTokenCache) error {
-	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
+	key := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
-	data, err := json.Marshal(coins)
+	dataBytes, err := json.Marshal(coins)
 	if err != nil {
 		lr.E().Errorf("Failed to marshal intelligence token cache: %v", err)
 		return fmt.Errorf("failed to marshal intelligence token cache: %w", err)
 	}
 
-	// 写入Redis缓存，设置过期时间为4天
-	if err := cache.Set(ctx, cacheKey, string(data), 4*24*time.Hour); err != nil {
+	// 获取原TTL，如果不存在则使用默认值
+	ttl, err := cache.MainRedis().TTL(ctx, key).Result()
+	if err != nil {
+		lr.E().Errorf("Failed to get TTL for key %s: %v", key, err)
+		// 使用默认TTL
+		ttl = 4 * 24 * time.Hour
+	} else if ttl < 0 {
+		// TTL为-1表示没有过期时间，-2表示键不存在，使用默认TTL
+		ttl = 4 * 24 * time.Hour
+	}
+
+	// 写入Redis缓存，保留原TTL
+	if err := cache.Set(ctx, key, string(dataBytes), ttl); err != nil {
 		lr.E().Errorf("Failed to write cache data: %v", err)
 		return fmt.Errorf("failed to write cache data: %w", err)
 	}

@@ -19,8 +19,10 @@ import (
 func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 	entities := analyzeEntities(data)
 
-	if err := UpdateTokenMarketData(ctx, data.ID); err != nil {
-		lr.E().Errorf("Failed to update admin market data: %v", err)
+	// 触发市场数据更新
+	err := UpdateMarketData(ctx, data.ID)
+	if err != nil {
+		lr.E().Error(err)
 	}
 
 	if err := processRankingAndHotData(ctx, data, entities); err != nil {
