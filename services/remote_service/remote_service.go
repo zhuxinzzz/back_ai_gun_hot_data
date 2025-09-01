@@ -21,7 +21,7 @@ func Init() {
 		SetRetryCount(3).
 		SetRetryWaitTime(1 * time.Second).
 		SetRetryMaxWaitTime(5 * time.Second)
-	//cli.SetDebug(true)
+	cli.SetDebug(true)
 	// 设置通用请求头
 	cli.SetHeader("User-Agent", "back_ai_gun_data/1.0")
 	cli.SetHeader("Content-Type", "application/json")

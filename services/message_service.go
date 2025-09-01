@@ -41,7 +41,7 @@ const (
 )
 
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
-	time.Sleep(detectionInterval)
+	//time.Sleep(detectionInterval)
 
 	cacheTokens, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {
@@ -160,7 +160,7 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 	}
 
 	// 3. 调用admin服务进行稳定排序，返回排序后的切片
-	rankedCoins, err := remote_service.CallAdminRanking(combined)
+	rankedCoins, err := remote_service.CallAdminRankingWithCache(intelligenceID, combined)
 	if err != nil {
 		lr.E().Error(err)
 		return err

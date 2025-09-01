@@ -3,6 +3,7 @@ package remote_service
 import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
+	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/pkg/model/dto_cache"
 	"testing"
 
@@ -42,8 +43,32 @@ func TestCallAdminRanking(t *testing.T) {
 	lr.Init()
 	cache.Init()
 	Init()
-	//intelligenceID := "0198f0a9-0e77-721b-99df-b94e851375d1"
-	rankedCoins, err := CallAdminRanking(cacheTokens)
+
+	intelligenceID := "0198f0a9-0e77-721b-99df-b94e851375d1"
+	//rankedCoins, err := CallAdminRanking(intelligenceID, dtoCacheSliceToDTO(cacheTokens), dtoCacheSliceToDTO(cacheTokens))
+	rankedCoins, err := CallAdminRanking(dto.SortRequest{
+		IntelligenceID: intelligenceID,
+		TokenList: []dto.TokenReq{
+			{
+				ID: "1",
+				Chain: dto.ChainInfo{
+					ID:   "1",
+					Name: "Ethereum",
+					Logo: "https://assets.coingecko.com/coins/images/279/large/ethereum.png?1595348880",
+				},
+				ContractAddress: "0xBTC",
+			},
+			{
+				ID: "2",
+				Chain: dto.ChainInfo{
+					ID:   "2",
+					Name: "Bitcoin",
+					Logo: "https://assets.coingecko.com/coins/images/1/large/bitcoin.png?1547033579",
+				},
+				ContractAddress: "0xETH",
+			},
+		},
+	})
 	assert.NoError(t, err)
 	assert.NotNil(t, rankedCoins)
 }
