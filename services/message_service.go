@@ -41,7 +41,7 @@ const (
 )
 
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
-	time.Sleep(detectionInterval)
+	//time.Sleep(detectionInterval)
 
 	cacheTokens, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {
@@ -53,29 +53,26 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		return nil
 	}
 
-	// 构建搜索名称列表
-	var searchNames []string
-	for _, t := range cacheTokens {
-		if t.Name != "" {
-			searchNames = append(searchNames, t.Name)
-		}
-	}
-
-	// 执行10次定时检测
 	for detectionCount := 0; detectionCount < maxDetections; detectionCount++ {
+		var searchNames []string
+		for _, t := range cacheTokens {
+			if t.Name != "" {
+				searchNames = append(searchNames, t.Name)
+			}
+		}
+
 		select {
 		case <-ctx.Done():
 			lr.I().Infof("Context cancelled, stopping detection for intelligence %s", data.ID)
 			return nil
 		default:
-			// 执行一次检测和处理
 			if err := executeDetectionAndProcessing(ctx, data.ID, searchNames, cacheTokens); err != nil {
 				lr.E().Errorf("Detection %d failed: %v", detectionCount+1, err)
 				// 继续下一次检测，不中断流程
 			}
 
 			detectionCount++
-			lr.I().Infof("Detection %d/%d completed for intelligence %s", detectionCount, maxDetections, data.ID)
+			//lr.I().Infof("Detection %d/%d completed for intelligence %s", detectionCount, maxDetections, data.ID)
 
 			// 如果不是最后一次检测，等待下次检测
 			if detectionCount < maxDetections {
@@ -84,7 +81,7 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		}
 	}
 
-	lr.I().Infof("Completed %d detections for intelligence %s", maxDetections, data.ID)
+	//lr.I().Infof("Completed %d detections for intelligence %s", maxDetections, data.ID)
 	return nil
 }
 
@@ -204,11 +201,6 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 		}
 	}
 
-	if err := ProcessCoinHotData(intelligenceID, rankedCoins); err != nil {
-		lr.E().Error(err)
-		return err
-	}
-
 	return nil
 }
 
@@ -273,11 +265,6 @@ func startTokenDetectionTask(ctx context.Context, intelligenceID string, searchN
 
 // queryTokensByName 查询GMGN数据
 func queryTokensByName(ctx context.Context, searchNames []string) ([]remote.GmGnToken, error) {
-	if len(searchNames) == 0 {
-		return nil, nil
-	}
-
-	// 查询GMGN
 	namesStr := strings.Join(searchNames, ",")
 	limit := len(searchNames) * 3
 	if limit < 10 {
@@ -286,7 +273,8 @@ func queryTokensByName(ctx context.Context, searchNames []string) ([]remote.GmGn
 
 	remoteTokens, err := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, "", limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query GMGN: %w", err)
+		lr.E().Error(err)
+		return nil, err
 	}
 
 	return remoteTokens, nil

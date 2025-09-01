@@ -21,25 +21,6 @@ const (
 	CacheExpiration = 4 * 24 * time.Hour
 )
 
-func ProcessIntelligenceCoinCache(data *model.MessageData) error {
-	intelligenceID := data.ID
-
-	// 从消息中提取币信息
-	coins, err := extractCoinsFromMessage(data)
-	if err != nil {
-		lr.E().Errorf("Failed to extract coins from message: %v", err)
-		return fmt.Errorf("failed to extract coins from message: %w", err)
-	}
-
-	if err := updateIntelligenceCoinCache(intelligenceID, coins); err != nil {
-		lr.E().Errorf("Failed to update intelligence token cache: %v", err)
-		return fmt.Errorf("failed to update intelligence token cache: %w", err)
-	}
-
-	return nil
-}
-
-// extractCoinsFromMessage 从消息中提取币信息
 func extractCoinsFromMessage(data *model.MessageData) ([]dto_cache.IntelligenceTokenCache, error) {
 	var coins []dto_cache.IntelligenceTokenCache
 
@@ -112,53 +93,6 @@ func generateSymbol(name string) string {
 		return name[:3]
 	}
 	return name
-}
-
-func updateIntelligenceCoinCache(intelligenceID string, newCoins []dto_cache.IntelligenceTokenCache) error {
-	// 获取现有缓存
-	existingCoins, err := getIntelligenceCoinCache(intelligenceID)
-	if err != nil {
-		lr.E().Errorf("Failed to get existing cache for intelligence %s: %v", intelligenceID, err)
-		// 如果获取失败，使用空数组
-		existingCoins = []dto_cache.IntelligenceTokenCache{}
-	}
-
-	// 调用GMGN服务更新市场信息
-	if err := updateMarketInfoFromGMGN(newCoins); err != nil {
-		lr.E().Errorf("Failed to update market info from GMGN for intelligence %s: %v", intelligenceID, err)
-		// 即使GMGN调用失败，也继续更新缓存，只是市场信息可能不是最新的
-	}
-
-	// 处理币热数据流程（更新admin服务缓存、排序、打标签、进入热数据缓存）
-	if err := ProcessCoinHotData(intelligenceID, newCoins); err != nil {
-		lr.E().Errorf("Failed to process token hot data for intelligence %s: %v", intelligenceID, err)
-		// 热数据处理失败不影响主缓存更新流程
-	}
-
-	// 创建现有币的映射
-	existingCoinsMap := make(map[string]dto_cache.IntelligenceTokenCache)
-	for _, coin := range existingCoins {
-		existingCoinsMap[coin.Name] = coin
-	}
-
-	// 添加或更新新币信息
-	for _, newCoin := range newCoins {
-		if existingCoin, exists := existingCoinsMap[newCoin.Name]; exists {
-			// 更新现有币信息，保留原有的市场数据
-			newCoin.Stats = existingCoin.Stats
-			newCoin.UpdatedAt = dto_cache.CustomTime{Time: time.Now()}
-		}
-		existingCoinsMap[newCoin.Name] = newCoin
-	}
-
-	// 转换回切片
-	var updatedCoins []dto_cache.IntelligenceTokenCache
-	for _, coin := range existingCoinsMap {
-		updatedCoins = append(updatedCoins, coin)
-	}
-
-	// 更新缓存
-	return setIntelligenceCoinCache(intelligenceID, updatedCoins)
 }
 
 func getIntelligenceCoinCache(intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {

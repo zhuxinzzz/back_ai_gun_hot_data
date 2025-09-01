@@ -97,11 +97,17 @@ func QueryTokensByNameWithLimit(ctx context.Context, name string, chain string, 
 
 	var allTokens []remote.GmGnToken
 	for _, tokens := range resp.Data {
-
 		allTokens = append(allTokens, tokens...)
 	}
 
-	return allTokens, nil
+	fillteredTokens := make([]remote.GmGnToken, 0, len(allTokens))
+	for _, token := range allTokens {
+		if _, exists := chainFilter[token.Network]; !exists {
+			fillteredTokens = append(fillteredTokens, token)
+		}
+	}
+
+	return fillteredTokens, nil
 }
 
 func QueryTokensByAddress(address string, chain string) ([]remote.GmGnToken, error) {

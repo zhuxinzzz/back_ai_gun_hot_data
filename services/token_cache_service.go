@@ -6,7 +6,6 @@ import (
 	"back_ai_gun_data/pkg/model/dto_cache"
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -14,69 +13,69 @@ const (
 	IntelligenceCoinCacheKeyPrefix = "dogex:intelligence:latest_entities:intelligence_id:"
 )
 
-var chainName = map[string]struct{}{
-	"Base":             {},
-	"Polygon zkEVM":    {},
-	"Fantom":           {},
-	"Blast":            {},
-	"Arbitrum":         {},
-	"Scroll":           {},
-	"Gnosis":           {},
-	"Avalanche":        {},
-	"Polygon":          {},
-	"BSC":              {},
-	"Optimism":         {},
-	"Solana":           {},
-	"zkSync":           {},
-	"Linea":            {},
-	"Moonbeam":         {},
-	"Metis":            {},
-	"Immutable zkEVM":  {},
-	"Lisk":             {},
-	"Soneium":          {},
-	"Fuse":             {},
-	"Lens":             {},
-	"Mode":             {},
-	"Gravity":          {},
-	"Cronos":           {},
-	"Abstract":         {},
-	"Taiko":            {},
-	"Boba":             {},
-	"Unichain":         {},
-	"opBNB":            {},
-	"Swellchain":       {},
-	"Aurora":           {},
-	"Sei":              {},
-	"Sonic":            {},
-	"Moonriver":        {},
-	"Corn":             {},
-	"zkfair":           {},
-	"Bitcoin":          {},
-	"Conflux":          {},
-	"Celo":             {},
-	"Sui":              {},
-	"binancecoin":      {},
-	"World Chain":      {},
-	"the-open-network": {},
-	//"Ink":                     {},
-	"BOB":                     {},
-	"Superposition":           {},
-	"kucoin-community-chain":  {},
-	"arbitrum-nova":           {},
-	"XDC":                     {},
-	"Apechain":                {},
-	"Kaia":                    {},
-	"Avalanche X-Chain":       {},
-	"Etherlink":               {},
-	"BNB Beacon Chain (BEP2)": {},
-	"Starknet":                {},
-	"Rootstock":               {},
-	"Berachain":               {},
-	"Manta Pacific":           {},
-	"Mantle":                  {},
-	"Ethereum":                {},
-	"HyperEVM":                {},
-}
+//var chainName = map[string]struct{}{
+//	"Base":             {},
+//	"Polygon zkEVM":    {},
+//	"Fantom":           {},
+//	"Blast":            {},
+//	"Arbitrum":         {},
+//	"Scroll":           {},
+//	"Gnosis":           {},
+//	"Avalanche":        {},
+//	"Polygon":          {},
+//	"BSC":              {},
+//	"Optimism":         {},
+//	"Solana":           {},
+//	"zkSync":           {},
+//	"Linea":            {},
+//	"Moonbeam":         {},
+//	"Metis":            {},
+//	"Immutable zkEVM":  {},
+//	"Lisk":             {},
+//	"Soneium":          {},
+//	"Fuse":             {},
+//	"Lens":             {},
+//	"Mode":             {},
+//	"Gravity":          {},
+//	"Cronos":           {},
+//	"Abstract":         {},
+//	"Taiko":            {},
+//	"Boba":             {},
+//	"Unichain":         {},
+//	"opBNB":            {},
+//	"Swellchain":       {},
+//	"Aurora":           {},
+//	"Sei":              {},
+//	"Sonic":            {},
+//	"Moonriver":        {},
+//	"Corn":             {},
+//	"zkfair":           {},
+//	"Bitcoin":          {},
+//	"Conflux":          {},
+//	"Celo":             {},
+//	"Sui":              {},
+//	"binancecoin":      {},
+//	"World Chain":      {},
+//	"the-open-network": {},
+//	//"Ink":                     {},
+//	"BOB":                     {},
+//	"Superposition":           {},
+//	"kucoin-community-chain":  {},
+//	"arbitrum-nova":           {},
+//	"XDC":                     {},
+//	"Apechain":                {},
+//	"Kaia":                    {},
+//	"Avalanche X-Chain":       {},
+//	"Etherlink":               {},
+//	"BNB Beacon Chain (BEP2)": {},
+//	"Starknet":                {},
+//	"Rootstock":               {},
+//	"Berachain":               {},
+//	"Manta Pacific":           {},
+//	"Mantle":                  {},
+//	"Ethereum":                {},
+//	"HyperEVM":                {},
+//}
 
 func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
 	key := IntelligenceCoinCacheKeyPrefix + intelligenceID
@@ -85,17 +84,17 @@ func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.Int
 	if err != nil {
 		// 如果缓存不存在，返回空数据而不是错误
 		if err.Error() == "redis: nil" {
-			lr.E().Errorf("Cache not found for intelligence %s, returning empty data", intelligenceID)
+			lr.E().Error(err)
 			return []dto_cache.IntelligenceTokenCache{}, nil
 		}
-		return nil, fmt.Errorf("failed to get cache data: %w", err)
+		return nil, err
 	}
 
 	// 直接解析为币数组
 	var coins []dto_cache.IntelligenceTokenCache
 	if err := json.Unmarshal([]byte(dataStr), &coins); err != nil {
-		lr.E().Errorf("Failed to unmarshal cache data: %v", err)
-		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
+		lr.E().Error(err)
+		return nil, err
 	}
 
 	return coins, nil
@@ -106,14 +105,14 @@ func writeTokenCache(ctx context.Context, intelligenceID string, coins []dto_cac
 
 	dataBytes, err := json.Marshal(coins)
 	if err != nil {
-		lr.E().Errorf("Failed to marshal intelligence token cache: %v", err)
-		return fmt.Errorf("failed to marshal intelligence token cache: %w", err)
+		lr.E().Error(err)
+		return err
 	}
 
 	// 获取原TTL，如果不存在则使用默认值
 	ttl, err := cache.MainRedis().TTL(ctx, key).Result()
 	if err != nil {
-		lr.E().Errorf("Failed to get TTL for key %s: %v", key, err)
+		lr.E().Error(err)
 		// 使用默认TTL
 		ttl = 4 * 24 * time.Hour
 	} else if ttl < 0 {
@@ -123,8 +122,8 @@ func writeTokenCache(ctx context.Context, intelligenceID string, coins []dto_cac
 
 	// 写入Redis缓存，保留原TTL
 	if err := cache.Set(ctx, key, string(dataBytes), ttl); err != nil {
-		lr.E().Errorf("Failed to write cache data: %v", err)
-		return fmt.Errorf("failed to write cache data: %w", err)
+		lr.E().Error(err)
+		return err
 	}
 
 	return nil
