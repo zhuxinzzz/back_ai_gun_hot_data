@@ -27,8 +27,7 @@ func main() {
 
 	lr.Init()
 
-	redisConfig := cache.GetRedisConfigFromEnv()
-	cache.Init(redisConfig)
+	cache.Init()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

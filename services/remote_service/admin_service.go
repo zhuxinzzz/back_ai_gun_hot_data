@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	IntelligenceCoinCacheKeyPrefix = "dogex:intelligence:latest_entity_info:intelligence_id:"
+	IntelligenceCoinCacheKeyPrefix = "dogex:intelligence:latest_entities:intelligence_id:"
 )
 
 // UpdateAdminMarketData 更新admin服务缓存中的市场信息
@@ -27,7 +27,7 @@ func UpdateAdminMarketData(intelligenceID string) error {
 		return fmt.Errorf("failed to read intelligence coin cache: %w", err)
 	}
 
-	if cacheData == nil || len(cacheData.Coins) == 0 {
+	if len(cacheData) == 0 {
 		lr.E().Errorf("No coins found in cache for intelligence %s", intelligenceID)
 		return nil
 	}
@@ -41,7 +41,7 @@ func UpdateAdminMarketData(intelligenceID string) error {
 		coin  dto.IntelligenceCoinCache
 	}
 
-	for i, coin := range cacheData.Coins {
+	for i, coin := range cacheData {
 		if coin.Name != "" {
 			queryParams = append(queryParams, struct {
 				index int
@@ -123,9 +123,9 @@ func UpdateAdminMarketData(intelligenceID string) error {
 
 			// 更新市场信息
 			if matchedToken != nil {
-				cacheData.Coins[index].Stats.CurrentPriceUSD = matchedToken.PriceUSD
-				cacheData.Coins[index].Stats.CurrentMarketCap = matchedToken.MarketCap
-				cacheData.Coins[index].UpdatedAt = time.Now()
+				cacheData[index].Stats.CurrentPriceUSD = matchedToken.PriceUSD
+				cacheData[index].Stats.CurrentMarketCap = matchedToken.MarketCap
+				cacheData[index].UpdatedAt = time.Now()
 
 				// 计算预警涨幅：当前市值 ÷ 预警市值
 				if matchedToken.MarketCap != "0" && coin.Stats.WarningMarketCap != "0" {
@@ -143,14 +143,14 @@ func UpdateAdminMarketData(intelligenceID string) error {
 
 						// 更新最高涨幅（取较大值）
 						if currentIncreaseRate > highestIncreaseRate {
-							cacheData.Coins[index].Stats.HighestIncreaseRate = fmt.Sprintf("%.6f", currentIncreaseRate)
+							cacheData[index].Stats.HighestIncreaseRate = fmt.Sprintf("%.6f", currentIncreaseRate)
 						}
 					}
 				}
 
 				// 如果合约地址为空，更新合约地址
-				if cacheData.Coins[index].ContractAddress == "" && matchedToken.Address != "" {
-					cacheData.Coins[index].ContractAddress = matchedToken.Address
+				if cacheData[index].ContractAddress == "" && matchedToken.Address != "" {
+					cacheData[index].ContractAddress = matchedToken.Address
 				}
 
 				updatedCount++
@@ -160,21 +160,18 @@ func UpdateAdminMarketData(intelligenceID string) error {
 		}
 	}
 
-	// 更新缓存时间戳
-	cacheData.UpdatedAt = time.Now()
-
 	// 将更新后的数据写回缓存
-	if err := writeIntelligenceCoinCacheToRedis(intelligenceID, cacheData.Coins); err != nil {
+	if err := writeIntelligenceCoinCacheToRedis(intelligenceID, cacheData); err != nil {
 		lr.E().Errorf("Failed to write intelligence coin cache: %v", err)
 		return fmt.Errorf("failed to write intelligence coin cache: %w", err)
 	}
 
-	lr.I().Infof("Updated market data for intelligence %s: %d/%d coins", intelligenceID, updatedCount, len(cacheData.Coins))
+	lr.I().Infof("Updated market data for intelligence %s: %d/%d coins", intelligenceID, updatedCount, len(cacheData))
 	return nil
 }
 
 // ReadIntelligenceCoinCacheFromRedis 从Redis读取情报币缓存（公共接口）
-func ReadIntelligenceCoinCacheFromRedis(intelligenceID string) (*dto.IntelligenceCoinCacheData, error) {
+func ReadIntelligenceCoinCacheFromRedis(intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
 	return readIntelligenceCoinCacheFromRedis(intelligenceID)
 }
 
@@ -239,7 +236,7 @@ func CallAdminRankingService(coins []dto.IntelligenceCoinCache) (*dto.AdminRanki
 }
 
 // readIntelligenceCoinCacheFromRedis 从Redis读取情报币缓存
-func readIntelligenceCoinCacheFromRedis(intelligenceID string) (*dto.IntelligenceCoinCacheData, error) {
+func readIntelligenceCoinCacheFromRedis(intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
 	ctx := context.Background()
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
@@ -248,23 +245,19 @@ func readIntelligenceCoinCacheFromRedis(intelligenceID string) (*dto.Intelligenc
 		// 如果缓存不存在，返回空数据而不是错误
 		if err.Error() == "redis: nil" {
 			lr.E().Errorf("Cache not found for intelligence %s, returning empty data", intelligenceID)
-			return &dto.IntelligenceCoinCacheData{
-				IntelligenceID: intelligenceID,
-				Coins:          []dto.IntelligenceCoinCache{},
-				CreatedAt:      time.Now(),
-				UpdatedAt:      time.Now(),
-			}, nil
+			return []dto.IntelligenceCoinCache{}, nil
 		}
 		return nil, fmt.Errorf("failed to get cache data: %w", err)
 	}
 
-	var data dto.IntelligenceCoinCacheData
-	if err := json.Unmarshal([]byte(cacheData), &data); err != nil {
+	// 直接解析为币数组
+	var coins []dto.IntelligenceCoinCache
+	if err := json.Unmarshal([]byte(cacheData), &coins); err != nil {
 		lr.E().Errorf("Failed to unmarshal cache data: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
 	}
 
-	return &data, nil
+	return coins, nil
 }
 
 // writeIntelligenceCoinCacheToRedis 将情报币缓存写入Redis

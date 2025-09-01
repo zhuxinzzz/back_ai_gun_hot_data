@@ -7,12 +7,19 @@ import (
 
 // 从环境变量获取Redis配置
 func GetRedisConfigFromEnv() RedisConfig {
+	//return RedisConfig{
+	//	Addr:        getEnv("REDIS_ADDR", "hsy:16379"),
+	//	Password:    getEnv("REDIS_PASSWORD", "redisInstance1!"),
+	//	DB:          getEnvAsInt("REDIS_DB", 0),
+	//	ClusterMode: getEnvAsBool("REDIS_CLUSTER_MODE", false),
+	//	PoolSize:    getEnvAsInt("REDIS_POOL_SIZE", 10),
+	//}
 	return RedisConfig{
-		Addr:        getEnv("REDIS_ADDR", "hsy:16379"),
-		Password:    getEnv("REDIS_PASSWORD", "redisInstance1!"),
+		Addr: getEnv("REDIS_ADDR", "satoshi8.redis.rds.aliyuncs.com:6379"),
+		//Password:    getEnv("REDIS_PASSWORD", "redisInstance1!"),
 		DB:          getEnvAsInt("REDIS_DB", 0),
 		ClusterMode: getEnvAsBool("REDIS_CLUSTER_MODE", false),
-		PoolSize:    getEnvAsInt("REDIS_POOL_SIZE", 10),
+		PoolSize:    getEnvAsInt("REDIS_POOL_SIZE", 15), // 15 is test db.
 	}
 }
 

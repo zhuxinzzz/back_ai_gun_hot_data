@@ -1,8 +1,12 @@
 package remote_service
 
 import (
+	"back_ai_gun_data/pkg/cache"
+	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model/dto"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCallAdminRankingService(t *testing.T) {
@@ -84,4 +88,13 @@ func TestCallAdminRankingServiceEmpty(t *testing.T) {
 	}
 
 	t.Logf("Empty array test passed!")
+}
+
+func TestUpdateAdminMarketData(t *testing.T) {
+	cache.Init()
+	lr.Init()
+
+	intelligenceID := "0198f0a9-0e77-721b-99df-b94e851375d1"
+	err := UpdateAdminMarketData(intelligenceID)
+	assert.NoError(t, err)
 }

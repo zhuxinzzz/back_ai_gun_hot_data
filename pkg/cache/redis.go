@@ -22,9 +22,11 @@ type RedisConfig struct {
 
 var mainIns *Instance
 
-// 初始化Redis连接
-func Init(config RedisConfig) {
+// 从环境变量初始化Redis连接
+func Init() {
+	config := GetRedisConfigFromEnv()
 	mainIns = createDataSource(config)
+
 }
 
 // 获取主Redis客户端

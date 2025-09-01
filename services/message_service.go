@@ -47,19 +47,19 @@ func processCoinRankingAndHotData(data *model.MessageData, entities map[string]i
 	}
 
 	// 2. 从缓存读取最新的币数据
-	cacheData, err := remote_service.ReadIntelligenceCoinCacheFromRedis(data.ID)
+	coins, err := remote_service.ReadIntelligenceCoinCacheFromRedis(data.ID)
 	if err != nil {
 		lr.E().Errorf("Failed to read intelligence coin cache: %v", err)
 		return fmt.Errorf("failed to read intelligence coin cache: %w", err)
 	}
 
-	if cacheData == nil || len(cacheData.Coins) == 0 {
+	if len(coins) == 0 {
 		lr.I().Infof("No coins found in cache for intelligence %s", data.ID)
 		return nil
 	}
 
 	// 3. 调用admin服务排序接口
-	rankingResponse, err := remote_service.CallAdminRankingService(cacheData.Coins)
+	rankingResponse, err := remote_service.CallAdminRankingService(coins)
 	if err != nil {
 		lr.E().Errorf("Failed to call admin ranking service: %v", err)
 		return fmt.Errorf("failed to call admin ranking service: %w", err)
