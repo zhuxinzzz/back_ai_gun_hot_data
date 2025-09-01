@@ -83,7 +83,7 @@ var chainName = map[string]struct{}{
 }
 
 func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
-	cacheData, err := readTokenCache(ctx, intelligenceID)
+	cacheData, err := ReadTokenCache(ctx, intelligenceID)
 	if err != nil {
 		lr.E().Errorf("Failed to read intelligence token cache: %v", err)
 		return fmt.Errorf("failed to read intelligence token cache: %w", err)
@@ -238,10 +238,6 @@ func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
 }
 
 func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
-	return readTokenCache(ctx, intelligenceID)
-}
-
-func readTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.IntelligenceTokenCache, error) {
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
 	cacheData, err := cache.Get(ctx, cacheKey)

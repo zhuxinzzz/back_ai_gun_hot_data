@@ -18,9 +18,9 @@ func CallAdminRanking(coins []dto_cache.IntelligenceTokenCache) ([]dto_cache.Int
 	rankedCoins := make([]dto_cache.IntelligenceTokenCache, len(coins))
 	copy(rankedCoins, coins)
 
-	// 按市值降序排序
+	// 按市值降序排序（稳定排序，保证相同关键值时保留原相对次序）
 	// 优先使用current_market_cap，如果为0则使用warning_market_cap
-	sort.Slice(rankedCoins, func(i, j int) bool {
+	sort.SliceStable(rankedCoins, func(i, j int) bool {
 		// 获取i的市值
 		iMarketCap := rankedCoins[i].Stats.CurrentMarketCap
 		if iMarketCap == "0" || iMarketCap == "" {

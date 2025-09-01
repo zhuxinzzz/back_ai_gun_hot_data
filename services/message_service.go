@@ -5,9 +5,14 @@ import (
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model"
 	"back_ai_gun_data/pkg/model/dto"
+	"back_ai_gun_data/pkg/model/dto_cache"
+	"back_ai_gun_data/pkg/model/remote"
 	"back_ai_gun_data/services/remote_service"
+	"back_ai_gun_data/utils"
 	"context"
 	"fmt"
+	"strings"
+	"time"
 )
 
 func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
@@ -25,34 +30,148 @@ func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 }
 
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
-	// 阶段二：市场数据enriquecimiento与首次排名
-
-	// 1. 从缓存读取最新的币数据（上层已经更新过市场信息）
-	coins, err := ReadTokenCache(ctx, data.ID)
+	tokens, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {
 		lr.E().Errorf("Failed to read intelligence token cache: %v", err)
 		return fmt.Errorf("failed to read intelligence token cache: %w", err)
 	}
-
-	if len(coins) == 0 {
-		lr.I().Infof("No coins found in cache for intelligence %s", data.ID)
+	if len(tokens) == 0 {
+		lr.I().Infof("No tokens found in cache for intelligence %s", data.ID)
 		return nil
 	}
 
-	// 2. 调用admin服务排序接口，返回排序后的切片
-	rankedCoins, err := remote_service.CallAdminRanking(coins)
+	existingNames := make(map[string]struct{}, len(tokens))
+	for _, c := range tokens {
+		if c.Name != "" {
+			existingNames[c.Name] = struct{}{}
+		}
+	}
+
+	newNameSet := getTokenNameSet(entities)
+	var missingNames []string
+	for name := range newNameSet {
+		if _, ok := existingNames[name]; !ok {
+			missingNames = append(missingNames, name)
+		}
+	}
+
+	combined := make([]dto_cache.IntelligenceTokenCache, 0, len(tokens)+len(missingNames))
+	combined = append(combined, tokens...) // 旧币放在前面以便稳定排序时保序
+
+	// 2.3 为缺失的名称批量查询GMGN数据，尽量补齐市值
+	if len(missingNames) > 0 {
+		// 批量查询，limit 按名称数目放大
+		namesStr := strings.Join(missingNames, ",")
+		limit := len(missingNames) * 3
+		if limit < 10 {
+			limit = 10
+		}
+		gmgnTokens, qErr := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, "", limit)
+		if qErr != nil {
+			lr.E().Errorf("Batch GMGN query failed for new tokens: %v", qErr)
+			gmgnTokens = nil
+		}
+		gmgnByName := make(map[string]remote.GmGnToken)
+		for _, t := range gmgnTokens {
+			gmgnByName[t.Name] = t
+		}
+
+		// 2.4 生成新增token占位并尽量补齐市值，确保有稳定的唯一ID
+		for _, name := range missingNames {
+			now := time.Now()
+			newToken := dto_cache.IntelligenceTokenCache{
+				ID: utils.GenerateUUIDV7(),
+				//EntityID: utils.GenerateUUIDV7(),
+				Name:      name,
+				Symbol:    generateSymbol(name),
+				Standard:  stringPtr("ERC20"),
+				Decimals:  18,
+				Stats:     dto_cache.CoinMarketStats{},
+				Chain:     dto_cache.ChainInfo{},
+				CreatedAt: dto_cache.CustomTime{Time: now},
+				UpdatedAt: dto_cache.CustomTime{Time: now},
+			}
+
+			if info, ok := gmgnByName[name]; ok {
+				newToken.Stats.CurrentPriceUSD = info.PriceUSD
+				newToken.Stats.CurrentMarketCap = info.MarketCap
+				// 直接使用真实数据作为预警值，确保新token公平参与排序
+				newToken.Stats.WarningPriceUSD = info.PriceUSD
+				newToken.Stats.WarningMarketCap = info.MarketCap
+				if newToken.ContractAddress == "" {
+					newToken.ContractAddress = info.Address
+				}
+				// 如果需要，也可根据 info.Network 映射链信息，这里保持默认不强制设置
+			}
+
+			combined = append(combined, newToken)
+		}
+	}
+
+	// 3. 调用admin服务进行稳定排序，返回排序后的切片
+	rankedCoins, err := remote_service.CallAdminRanking(combined)
 	if err != nil {
 		lr.E().Errorf("Failed to call admin ranking service: %v", err)
 		return fmt.Errorf("failed to call admin ranking service: %w", err)
 	}
 
-	// 3. 处理热点数据（仅追加新的前三名）
+	// 4. 只有当新token进入前三名时，才将合并后的完整数据写回情报缓存
+	// 检查前三名中是否有新增token
+	hasNewTokenInTop3 := false
+	top3 := 3
+	if len(rankedCoins) < top3 {
+		top3 = len(rankedCoins)
+	}
+
+	// 构建旧缓存名称集合，用于快速判断
+	oldTokenNames := make(map[string]struct{}, len(tokens))
+	for _, t := range tokens {
+		oldTokenNames[t.Name] = struct{}{}
+	}
+
+	// 检查前三名中是否有新增token
+	for i := 0; i < top3; i++ {
+		if _, exists := oldTokenNames[rankedCoins[i].Name]; !exists {
+			hasNewTokenInTop3 = true
+			break
+		}
+	}
+
+	// 只有新token进入前三名时才更新缓存
+	if hasNewTokenInTop3 {
+		// 构建最终缓存：旧的全部 + 新的前三
+		finalCache := make([]dto_cache.IntelligenceTokenCache, 0, len(tokens)+3)
+
+		// 1. 先添加所有旧token
+		finalCache = append(finalCache, tokens...)
+
+		// 2. 添加前三名中的新token（去重）
+		addedNewNames := make(map[string]struct{})
+		for i := 0; i < top3; i++ {
+			token := rankedCoins[i]
+			// 如果是新token且还没添加过
+			if _, exists := oldTokenNames[token.Name]; !exists {
+				if _, added := addedNewNames[token.Name]; !added {
+					finalCache = append(finalCache, token)
+					addedNewNames[token.Name] = struct{}{}
+				}
+			}
+		}
+
+		if err := writeTokenCache(ctx, data.ID, finalCache); err != nil {
+			lr.E().Errorf("Failed to write updated token cache: %v", err)
+			// 缓存写入失败不影响后续流程，继续处理热点数据
+		}
+		lr.I().Infof("Updated cache: old tokens (%d) + new top3 tokens (%d) for %s", len(tokens), len(addedNewNames), data.ID)
+	}
+
+	// 5. 处理热点数据（仅追加新的前三名）
 	if err := ProcessCoinHotData(data.ID, rankedCoins); err != nil {
 		lr.E().Errorf("Failed to process token hot data: %v", err)
 		return fmt.Errorf("failed to process token hot data: %w", err)
 	}
 
-	lr.I().Infof("Successfully processed token ranking and hot data for intelligence %s", data.ID)
+	lr.I().Infof("Successfully processed token ranking, cache update and hot data for intelligence %s", data.ID)
 	return nil
 }
 
