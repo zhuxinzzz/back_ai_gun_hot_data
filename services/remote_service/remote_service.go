@@ -33,6 +33,6 @@ func Init() {
 	})
 }
 
-func GetCli() *resty.Client {
+func Cli() *resty.Client {
 	return httpClient
 }

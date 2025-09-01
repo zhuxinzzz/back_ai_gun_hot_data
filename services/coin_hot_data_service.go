@@ -23,15 +23,8 @@ const (
 // ProcessCoinHotData 处理币热数据流程
 // 1. 更新admin服务缓存中的市场信息
 // 2. 调用admin服务排序接口
-// 3. 打热点标签（is_show字段）
 // 4. 进入热数据缓存
 func ProcessCoinHotData(intelligenceID string, coins []dto.IntelligenceCoinCache) error {
-	// 步骤1: 更新admin服务缓存中的市场信息
-	if err := updateAdminMarketData(intelligenceID, coins); err != nil {
-		lr.E().Errorf("Failed to update admin market data: %v", err)
-		// 继续执行，不中断流程
-	}
-
 	// 步骤2: 调用admin服务排序接口
 	rankingResponse, err := callAdminRankingService(coins)
 	if err != nil {
@@ -51,7 +44,7 @@ func ProcessCoinHotData(intelligenceID string, coins []dto.IntelligenceCoinCache
 // updateAdminMarketData 更新admin服务缓存中的市场信息
 func updateAdminMarketData(intelligenceID string, coins []dto.IntelligenceCoinCache) error {
 	// 调用admin服务更新市场信息
-	if err := remote_service.UpdateAdminMarketData(nil, intelligenceID); err != nil {
+	if err := UpdateTokenMarketData(nil, intelligenceID); err != nil {
 		lr.E().Errorf("Failed to update admin market data: %v", err)
 		return fmt.Errorf("failed to update admin market data: %w", err)
 	}
@@ -80,7 +73,7 @@ func callAdminRankingService(coins []dto.IntelligenceCoinCache) (*dto.AdminRanki
 	}
 
 	// 调用admin服务排序接口
-	response, err := remote_service.CallAdminRankingService(validCoins)
+	response, err := remote_service.CallAdminRanking(validCoins)
 	if err != nil {
 		lr.E().Errorf("Failed to call admin ranking service: %v", err)
 		return nil, fmt.Errorf("failed to call admin ranking service: %w", err)
@@ -114,7 +107,7 @@ func processHotDataLabels(rankedCoins []dto.IntelligenceCoinCache) error {
 			IsShow:          isTopThree, // 前三名显示
 			Ranking:         ranking,    // 当前排名
 			HighestRanking:  ranking,    // 暂时设为当前排名，后续需要比较历史最高
-			CreatedAt:       rankedCoin.CreatedAt,
+			CreatedAt:       rankedCoin.CreatedAt.Time,
 			UpdatedAt:       time.Now(),
 		}
 

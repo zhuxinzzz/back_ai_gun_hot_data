@@ -11,7 +11,7 @@ import (
 /*
 === RUN   TestQueryTokensByName
 
-	gmgn_service_test.go:18:
+	gmgn_remote_service_test.go:18:
 	    [
 	      {
 	        "name": "HOKK Finance",

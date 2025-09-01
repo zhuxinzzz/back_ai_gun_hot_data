@@ -1,14 +1,14 @@
-package remote_service
+package services
 
 import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/pkg/model/remote"
+	"back_ai_gun_data/services/remote_service"
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -82,10 +82,8 @@ var chainName = map[string]struct{}{
 	"HyperEVM":                {},
 }
 
-// UpdateAdminMarketData 更新admin服务缓存中的市场信息
-// 从缓存读取数据，使用GMGN查询更新市场信息，然后写回缓存
-func UpdateAdminMarketData(ctx context.Context, intelligenceID string) error {
-	cacheData, err := readIntelligenceCoinCacheFromRedis(intelligenceID)
+func UpdateTokenMarketData(ctx context.Context, intelligenceID string) error {
+	cacheData, err := readTokenCache(ctx, intelligenceID)
 	if err != nil {
 		lr.E().Errorf("Failed to read intelligence coin cache: %v", err)
 		return fmt.Errorf("failed to read intelligence coin cache: %w", err)
@@ -153,7 +151,7 @@ func UpdateAdminMarketData(ctx context.Context, intelligenceID string) error {
 		if _, exists := chainName[chainSlug]; !exists {
 			chainSlug = ""
 		}
-		tokens, err := QueryTokensByNameWithLimit(ctx, namesStr, chainSlug, limit)
+		tokens, err := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, chainSlug, limit)
 		if err != nil {
 			lr.E().Errorf("Failed to batch query GMGN for chain %s: %v", chainSlug, err)
 			continue
@@ -230,7 +228,7 @@ func UpdateAdminMarketData(ctx context.Context, intelligenceID string) error {
 	}
 
 	// 将更新后的数据写回缓存
-	if err := writeIntelligenceCoinCacheToRedis(intelligenceID, cacheData); err != nil {
+	if err := writeTokenCache(ctx, intelligenceID, cacheData); err != nil {
 		lr.E().Errorf("Failed to write intelligence coin cache: %v", err)
 		return fmt.Errorf("failed to write intelligence coin cache: %w", err)
 	}
@@ -239,74 +237,11 @@ func UpdateAdminMarketData(ctx context.Context, intelligenceID string) error {
 	return nil
 }
 
-// ReadIntelligenceCoinCacheFromRedis 从Redis读取情报币缓存（公共接口）
-func ReadIntelligenceCoinCacheFromRedis(intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
-	return readIntelligenceCoinCacheFromRedis(intelligenceID)
+func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
+	return readTokenCache(ctx, intelligenceID)
 }
 
-// CallAdminRankingService 调用admin服务的排序接口
-func CallAdminRankingService(coins []dto.IntelligenceCoinCache) (*dto.AdminRankingResponse, error) {
-	// 模拟admin服务排序接口
-	// 接口：POST /api/admin/ranking
-	// Body: 代币集合
-	// 返回：排序后的代币集合（按市值降序排列）
-
-	if len(coins) == 0 {
-		return &dto.AdminRankingResponse{
-			Code:    0,
-			Message: "success",
-			Data:    []dto.IntelligenceCoinCache{},
-		}, nil
-	}
-
-	// 复制一份数据进行排序，避免修改原数据
-	rankedCoins := make([]dto.IntelligenceCoinCache, len(coins))
-	copy(rankedCoins, coins)
-
-	// 按市值降序排序（模拟admin服务的排序逻辑）
-	// 优先使用current_market_cap，如果为0则使用warning_market_cap
-	sort.Slice(rankedCoins, func(i, j int) bool {
-		// 获取i的市值
-		iMarketCap := rankedCoins[i].Stats.CurrentMarketCap
-		if iMarketCap == "0" || iMarketCap == "" {
-			iMarketCap = rankedCoins[i].Stats.WarningMarketCap
-		}
-
-		// 获取j的市值
-		jMarketCap := rankedCoins[j].Stats.CurrentMarketCap
-		if jMarketCap == "0" || jMarketCap == "" {
-			jMarketCap = rankedCoins[j].Stats.WarningMarketCap
-		}
-
-		// 转换为float进行比较
-		iVal, err1 := strconv.ParseFloat(iMarketCap, 64)
-		jVal, err2 := strconv.ParseFloat(jMarketCap, 64)
-
-		// 如果解析失败，按字符串比较
-		if err1 != nil || err2 != nil {
-			return iMarketCap > jMarketCap
-		}
-
-		// 按数值降序排列
-		return iVal > jVal
-	})
-
-	// 模拟网络延迟
-	time.Sleep(10 * time.Millisecond)
-
-	// 返回排序后的数据
-	response := &dto.AdminRankingResponse{
-		Code:    0,
-		Message: "success",
-		Data:    rankedCoins,
-	}
-
-	return response, nil
-}
-
-// readIntelligenceCoinCacheFromRedis 从Redis读取情报币缓存
-func readIntelligenceCoinCacheFromRedis(intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
-	ctx := context.Background()
+func readTokenCache(ctx context.Context, intelligenceID string) ([]dto.IntelligenceCoinCache, error) {
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
 	cacheData, err := cache.Get(ctx, cacheKey)
@@ -329,12 +264,9 @@ func readIntelligenceCoinCacheFromRedis(intelligenceID string) ([]dto.Intelligen
 	return coins, nil
 }
 
-// writeIntelligenceCoinCacheToRedis 将情报币缓存写入Redis
-func writeIntelligenceCoinCacheToRedis(intelligenceID string, coins []dto.IntelligenceCoinCache) error {
-	ctx := context.Background()
+func writeTokenCache(ctx context.Context, intelligenceID string, coins []dto.IntelligenceCoinCache) error {
 	cacheKey := IntelligenceCoinCacheKeyPrefix + intelligenceID
 
-	// 直接序列化币数组
 	data, err := json.Marshal(coins)
 	if err != nil {
 		lr.E().Errorf("Failed to marshal intelligence coin cache: %v", err)

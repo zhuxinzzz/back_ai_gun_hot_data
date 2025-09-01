@@ -104,7 +104,9 @@ func handleMsg(msg amqp.Delivery) {
 		return
 	}
 
-	if err := services.ProcessMessageData(&messageData); err != nil {
+	// 使用消息的上下文或创建新的上下文
+	ctx := context.Background()
+	if err := services.ProcessMessageData(ctx, &messageData); err != nil {
 		lr.E().Errorf("Failed to process message: %v", err)
 		err := msg.Nack(false, true)
 		if err != nil {

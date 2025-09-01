@@ -17,9 +17,6 @@ import (
 )
 
 const (
-	// 缓存键前缀
-	IntelligenceCoinCacheKeyPrefix = "dogex:intelligence:latest_entity_info:intelligence_id:"
-
 	// 缓存过期时间：4天
 	CacheExpiration = 4 * 24 * time.Hour
 )
