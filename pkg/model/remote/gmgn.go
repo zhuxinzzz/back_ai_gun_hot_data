@@ -19,6 +19,8 @@ type GmGnToken struct {
 	Symbol      string `json:"symbol"`
 	TotalSupply string `json:"total_supply"`
 	Volume24h   string `json:"volume_24h"`
+	IsInternal  bool   `json:"is_internal"`
+	Liquidity   string `json:"liquidity"`
 }
 
 // IsSupportedChain 检查是否为支持的链

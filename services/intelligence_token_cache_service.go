@@ -3,6 +3,7 @@ package services
 import (
 	"back_ai_gun_data/pkg/cache"
 	"back_ai_gun_data/pkg/dao"
+	"back_ai_gun_data/pkg/model"
 	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/pkg/model/dto_cache"
 	"context"
@@ -66,4 +67,28 @@ func SyncShowedTokensToIntelligence(intelligenceID string) error {
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+func ProcessIntelligenceData(ctx context.Context, data *model.MessageData) error {
+	lr.I().Infof("Processing intelligence data: %+v", data)
+
+	// TODO: 实现情报排序数据的处理逻辑
+	// 1. 解析情报数据
+	// 2. 进行排序计算
+	// 3. 更新数据库
+	// 4. 缓存结果
+
+	return nil
+}
+
+func ProcessETLEntityData(ctx context.Context, data *model.MessageData) error {
+	lr.I().Infof("Processing ETL entity data: %+v", data)
+
+	// TODO: 实现ETL实体数据的处理逻辑
+	// 1. 解析AI分析出的实体数据
+	// 2. 同步币信息
+	// 3. 更新实体关联
+	// 4. 触发相关业务逻辑
+
+	return nil
 }
