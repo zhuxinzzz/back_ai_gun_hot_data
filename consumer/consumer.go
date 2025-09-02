@@ -121,7 +121,6 @@ func handleMsg(msg amqp.Delivery, queueName string) {
 		}
 	}()
 
-	// 根据队列类型解析不同的消息结构
 	var err error
 	switch queueName {
 	case consts.QUEUE_INTELLIGENCE_SORT:

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
 type RankReq struct {
@@ -88,7 +90,7 @@ type IntelligenceTokenRankResp struct {
 	CreatedAt       string          `json:"created_at"`
 	UpdatedAt       string          `json:"updated_at"`
 
-	// 外部API字段
+	// 外部API字段 - 支持多种JSON字段名
 	Network          string `json:"network"`
 	ChainID          int    `json:"chain_id"`
 	PriceUSD         string `json:"price_usd"`
@@ -97,6 +99,9 @@ type IntelligenceTokenRankResp struct {
 	IsInternal       bool   `json:"is_internal"`
 	Liquidity        string `json:"liquidity"`
 	CurrentMarketCap string `json:"current_market_cap"`
+
+	// 兼容字段 - 用于外部API的camelCase格式
+	ContractAddressAlt string `json:"contractAddress"`
 }
 
 type CoinMarketStats struct {
@@ -137,7 +142,7 @@ func (c *ChainInfo) UnmarshalJSON(data []byte) error {
 	}
 
 	var obj chainObj
-	if err := json.Unmarshal(data, &obj); err != nil {
+	if err := jsoniter.Unmarshal(data, &obj); err != nil {
 		return err
 	}
 

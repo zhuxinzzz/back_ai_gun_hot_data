@@ -88,7 +88,7 @@ func ProcessIntelligenceData(ctx context.Context, data *model.IntelligenceMessag
 }
 
 func ProcessETLEntityData(ctx context.Context, data *model.ETLEntityMessage) error {
-	lr.I().Infof("Processing ETL entity data: %+v", data)
+	//lr.I().Infof("Processing ETL entity data: %+v", data)
 
 	// TODO: 实现ETL实体数据的处理逻辑
 	// 1. 解析AI分析出的实体数据

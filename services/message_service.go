@@ -10,7 +10,6 @@ import (
 	"back_ai_gun_data/services/remote_service"
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -70,6 +69,7 @@ func processRankingAndHotData(ctx context.Context, data *model.IntelligenceMessa
 	}
 
 	convertedTokens := convertProjectChainDataToCacheTokens(dtoTokens)
+	convertedTokens = deduplicateTokensAgainstExisting(convertedTokens, cacheTokens)
 	cacheTokens = append(cacheTokens, convertedTokens...)
 
 	for detectionCount := 0; detectionCount < maxDetections; detectionCount++ {
@@ -100,6 +100,11 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 	if len(searchNames) > 0 {
 		remoteTokens, qErr := queryTokensByName(ctx, searchNames)
 		if qErr == nil {
+			cacheTokenMap := make(map[string]dto_cache.IntelligenceToken)
+			for _, t := range cacheTokens {
+				cacheTokenMap[t.GetUniqueKey()] = t
+			}
+
 			searchResultsByName := make(map[string][]remote.GmGnToken)
 			for _, t := range remoteTokens {
 				if t.IsSupportedChain() {
@@ -107,19 +112,10 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 				}
 			}
 
-			// 从remote搜索结果中发现新币（不在缓存中的币）
 			for _, tokens := range searchResultsByName {
 				for _, token := range tokens {
-					// 检查是否已存在相同的币种
-					isNewToken := true
-					for _, existingToken := range cacheTokens {
-						if existingToken.IsSameToken(token) {
-							isNewToken = false
-							break
-						}
-					}
-
-					if isNewToken {
+					// 检查是否为新币
+					if _, exists := cacheTokenMap[token.GetUniqueKey()]; !exists {
 						newTokens = append(newTokens, token)
 
 						// 新币入库到project_chain_data表
@@ -128,34 +124,6 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 							// 入库失败不影响后续流程，继续处理
 						}
 					}
-				}
-			}
-
-			// 为newTokens填充市场数据（选择市值最高的token）
-			for i := range newTokens {
-				tokens, exists := searchResultsByName[newTokens[i].Name]
-				if !exists {
-					continue
-				}
-
-				// 选择市值最高的token
-				var bestToken *remote.GmGnToken
-				var bestMarketCap float64
-				for _, token := range tokens {
-					if token.Name == newTokens[i].Name &&
-						strings.EqualFold(token.Address, newTokens[i].Address) &&
-						strings.EqualFold(token.Network, newTokens[i].Network) {
-						marketCap, _ := strconv.ParseFloat(token.MarketCap, 64)
-						if bestToken == nil || marketCap > bestMarketCap {
-							bestToken = &token
-							bestMarketCap = marketCap
-						}
-					}
-				}
-
-				if bestToken != nil {
-					// 更新为最佳token（市值最高的）
-					newTokens[i] = *bestToken
 				}
 			}
 		} else {
@@ -188,13 +156,17 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 	if hasNewTokenInTop3 {
 		finalCache := make([]dto_cache.IntelligenceToken, 0, len(rankedTokens))
 
-		// 遍历排序后的结果，按顺序添加
+		// 遍历排序后的结果，按顺序添加，并更新更新时间
 		for _, token := range rankedTokens {
+			// 创建新的 token 副本，更新 UpdatedAt 字段
+			updatedToken := token
+			updatedToken.UpdatedAt = dto_cache.CustomTime{Time: time.Now()}
+
 			if _, exists := oldTokenKeys[token.GetUniqueKey()]; exists {
-				finalCache = append(finalCache, token)
+				finalCache = append(finalCache, updatedToken)
 			} else {
 				if len(finalCache) < top3 {
-					finalCache = append(finalCache, token)
+					finalCache = append(finalCache, updatedToken)
 				}
 			}
 		}
@@ -424,8 +396,27 @@ func getTokenNameSet(entities map[string]interface{}) map[string]bool {
 	return tokenNameSet
 }
 
-// convertProjectChainDataToCacheTokens 将 ProjectChainData 转换为 IntelligenceToken
 func convertProjectChainDataToCacheTokens(dtoTokens []*dto.ProjectChainData) []dto_cache.IntelligenceToken {
+	if len(dtoTokens) == 0 {
+		return make([]dto_cache.IntelligenceToken, 0)
+	}
+
+	// 收集所有需要查询的链ID
+	chainIDs := make([]string, 0, len(dtoTokens))
+	for _, dtoToken := range dtoTokens {
+		if dtoToken != nil && dtoToken.ChainID != nil && *dtoToken.ChainID != "" {
+			chainIDs = append(chainIDs, *dtoToken.ChainID)
+		}
+	}
+
+	// 批量查询链信息
+	chainMap, err := dao.GetChainsByIDs(chainIDs)
+	if err != nil {
+		lr.E().Errorf("Failed to get chains by IDs: %v", err)
+		// 如果查询失败，使用默认值继续处理
+		chainMap = make(map[string]*dto.Chain)
+	}
+
 	cacheTokens := make([]dto_cache.IntelligenceToken, 0, len(dtoTokens))
 
 	for _, dtoToken := range dtoTokens {
@@ -441,16 +432,34 @@ func convertProjectChainDataToCacheTokens(dtoTokens []*dto.ProjectChainData) []d
 		chainInfo := dto_cache.ChainInfo{
 			ID:        "",
 			NetworkID: "",
-			Name:      *dtoToken.Name,
+			Name:      "",
 			Symbol:    "",
 			Slug:      "",
 			Logo:      "",
 		}
 
-		// 如果有 ChainID，可以查询链信息（这里简化处理）
-		if dtoToken.ChainID != nil {
-			// TODO: 可以根据需要查询链信息
-			chainInfo.ID = *dtoToken.ChainID
+		// 如果有 ChainID，从批量查询结果中获取链信息
+		if dtoToken.ChainID != nil && *dtoToken.ChainID != "" {
+			if chain, exists := chainMap[*dtoToken.ChainID]; exists {
+				chainInfo.ID = chain.ID
+				chainInfo.NetworkID = ""
+				if chain.NetworkID != nil {
+					chainInfo.NetworkID = *chain.NetworkID
+				}
+				chainInfo.Name = chain.Name
+				chainInfo.Symbol = ""
+				if chain.Symbol != nil {
+					chainInfo.Symbol = *chain.Symbol
+				}
+				chainInfo.Slug = chain.Slug
+				chainInfo.Logo = ""
+				if chain.Logo != nil {
+					chainInfo.Logo = *chain.Logo
+				}
+			} else {
+				// 如果链信息不存在，至少设置ID
+				chainInfo.ID = *dtoToken.ChainID
+			}
 		}
 
 		// 创建本地变量并设置默认值
@@ -529,8 +538,8 @@ func saveNewTokenToProjectChainData(ctx context.Context, token remote.GmGnToken)
 		return err
 	}
 	if existingData != nil {
-		lr.I().Infof("Token already exists in project_chain_data: name=%s, address=%s, chain=%s",
-			token.Name, token.Address, token.Network)
+		//lr.I().Infof("Token already exists in project_chain_data: name=%s, address=%s, chain=%s",
+		//	token.Name, token.Address, token.Network)
 		return nil
 	}
 
@@ -542,4 +551,44 @@ func saveNewTokenToProjectChainData(ctx context.Context, token remote.GmGnToken)
 	}
 
 	return nil
+}
+
+func deduplicateTokensAgainstExisting(tokens []dto_cache.IntelligenceToken, existingTokens []dto_cache.IntelligenceToken) []dto_cache.IntelligenceToken {
+	if len(tokens) == 0 {
+		return tokens
+	}
+
+	// 构建已有 tokens 的唯一键集合
+	existingKeys := make(map[string]bool)
+	for _, token := range existingTokens {
+		key := token.GetUniqueKey()
+		if key != "" {
+			existingKeys[key] = true
+		}
+	}
+
+	// 对 tokens 进行去重，同时排除与 existingTokens 重复的项
+	seen := make(map[string]bool)
+	result := make([]dto_cache.IntelligenceToken, 0, len(tokens))
+
+	for _, token := range tokens {
+		key := token.GetUniqueKey()
+		if key == "" {
+			// 跳过无效的 token
+			continue
+		}
+
+		// 跳过与已有 tokens 重复的项
+		if existingKeys[key] {
+			continue
+		}
+
+		// 跳过内部重复的项
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, token)
+		}
+	}
+
+	return result
 }

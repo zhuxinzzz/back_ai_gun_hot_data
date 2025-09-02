@@ -111,7 +111,6 @@ func GetProjectChainDataByNamesAndAddresses(names []string, addresses []string) 
 		resultList[i] = &dataList[i]
 	}
 
-	lr.I().Infof("Successfully found %d project chain data records for names: %v, addresses: %v", len(resultList), names, addresses)
 	return resultList, nil
 }
 

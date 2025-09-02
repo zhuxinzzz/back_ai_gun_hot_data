@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -57,6 +58,14 @@ func (t *GmGnToken) ToNewTokenReq() dto.NewTokenReq {
 		IsInternal:  t.IsInternal,
 		Liquidity:   t.Liquidity,
 	}
+}
+
+// GetUniqueKey 获取唯一标识符，用于map查找和重复检查
+// 格式：name:contract_address:chain_slug (与IntelligenceToken保持一致)
+func (t *GmGnToken) GetUniqueKey() string {
+	addr := strings.ToLower(strings.TrimPrefix(t.Address, "0x"))
+	chainSlug := strings.ToLower(t.Network)
+	return fmt.Sprintf("%s:%s:%s", strings.ToLower(t.Name), addr, chainSlug)
 }
 
 // TokenQueryParams 代币查询参数

@@ -51,7 +51,6 @@ func QueryTokens(ctx context.Context, params remote.TokenQueryParams) (*remote.T
 	// 发送请求
 	resp, err := Cli().R().
 		SetContext(ctx).
-		SetResult(&remote.TokenQueryResponse{}).
 		Get(apiURL)
 
 	if err != nil {
@@ -63,14 +62,18 @@ func QueryTokens(ctx context.Context, params remote.TokenQueryParams) (*remote.T
 		return nil, fmt.Errorf("http error: %d", resp.StatusCode())
 	}
 
-	result := resp.Result().(*remote.TokenQueryResponse)
+	var result remote.TokenQueryResponse
+	if err := jsoniter.Unmarshal(resp.Body(), &result); err != nil {
+		lr.E().Error("Failed to unmarshal response: ", err)
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
 
 	// 检查业务错误
 	if result.Code != 0 {
 		return nil, fmt.Errorf("business error: %d - %s", result.Code, result.Msg)
 	}
 
-	return result, nil
+	return &result, nil
 }
 
 func QueryTokensByName(name string, chain string) ([]remote.GmGnToken, error) {

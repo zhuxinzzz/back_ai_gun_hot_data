@@ -183,3 +183,25 @@ func GetChainIDBySlug(slug string) (string, error) {
 
 	return chain.ID, nil
 }
+
+// GetChainsByIDs 根据链ID列表批量获取链信息
+func GetChainsByIDs(chainIDs []string) (map[string]*dto.Chain, error) {
+	if len(chainIDs) == 0 {
+		return make(map[string]*dto.Chain), nil
+	}
+
+	var chains []dto.Chain
+	result := pgDB.Where("id IN ? AND is_deleted = false", chainIDs).Find(&chains)
+	if result.Error != nil {
+		lr.E().Errorf("Failed to get chains by IDs: %v", result.Error)
+		return nil, result.Error
+	}
+
+	// 构建 ID 到 Chain 的映射
+	chainMap := make(map[string]*dto.Chain)
+	for i := range chains {
+		chainMap[chains[i].ID] = &chains[i]
+	}
+
+	return chainMap, nil
+}

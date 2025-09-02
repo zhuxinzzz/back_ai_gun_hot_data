@@ -4,12 +4,11 @@ import (
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/pkg/model/dto_cache"
-	"encoding/json"
-	"fmt"
 	"time"
 
 	"back_ai_gun_data/pkg/model/remote"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/tidwall/gjson"
 )
 
@@ -18,7 +17,7 @@ const (
 )
 
 func getAdminHost() string {
-	return "http://192.168.4.64:8001"
+	return "https://api.idogex.ai"
 }
 
 func callAdminRanking(req dto.RankReq) ([]dto.IntelligenceTokenRankResp, error) {
@@ -32,14 +31,9 @@ func callAdminRanking(req dto.RankReq) ([]dto.IntelligenceTokenRankResp, error) 
 		return nil, err
 	}
 
-	if resp.StatusCode() != 200 {
-		lr.E().Errorf("Admin ranking API returned status %d: %s", resp.StatusCode(), resp.String())
-		return nil, fmt.Errorf("admin ranking API error: status %d", resp.StatusCode())
-	}
-
 	var tokenList []dto.IntelligenceTokenRankResp
 	dataStr := gjson.Get(resp.String(), "data").Raw
-	if err := json.Unmarshal([]byte(dataStr), &tokenList); err != nil {
+	if err := jsoniter.Unmarshal([]byte(dataStr), &tokenList); err != nil {
 		lr.E().Errorf("Failed to unmarshal data array: %v", err)
 		return nil, err
 	}
@@ -58,17 +52,17 @@ func convertCacheToTokenReq(cacheTokens []dto_cache.IntelligenceToken) []dto.Old
 func CallAdminRankingWithGmGnTokens(intelligenceID string, oldTokens []dto_cache.IntelligenceToken, newTokens []remote.GmGnToken) ([]dto_cache.IntelligenceToken, error) {
 	req := dto.RankReq{
 		IntelligenceID:      intelligenceID,
-		IntelligenceHotData: convertCacheToTokenReq(oldTokens)[:1],         // todo test
-		TokenList:           convertGmGnTokensToNewTokenReq(newTokens)[:1], // todo test
+		IntelligenceHotData: convertCacheToTokenReq(oldTokens),
+		TokenList:           convertGmGnTokensToNewTokenReq(newTokens),
 	}
 
-	resp, err := callAdminRanking(req)
+	rankedTokens, err := callAdminRanking(req)
 	if err != nil {
 		lr.E().Error(err)
 		return nil, err
 	}
 
-	return ConvertSortResponseToCache(resp), nil
+	return ConvertSortResponseToCache(rankedTokens), nil
 }
 
 func convertGmGnTokensToNewTokenReq(gmgnTokens []remote.GmGnToken) []dto.NewTokenReq {
@@ -81,7 +75,7 @@ func convertGmGnTokensToNewTokenReq(gmgnTokens []remote.GmGnToken) []dto.NewToke
 
 func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenRankResp) []dto_cache.IntelligenceToken {
 	result := make([]dto_cache.IntelligenceToken, 0, len(dtoTokens))
-	for _, dtoToken := range dtoTokens {
+	for i, dtoToken := range dtoTokens {
 		// 判断是否为外部API数据结构
 		isExternalAPI := dtoToken.Network != "" || dtoToken.PriceUSD != "" || dtoToken.Volume24h != ""
 
@@ -102,6 +96,17 @@ func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenRankResp) []dto
 
 		if isExternalAPI {
 			// 外部API数据结构处理
+			// 优先使用ContractAddressAlt（camelCase），如果没有则使用ContractAddress（snake_case）
+			contractAddress := dtoToken.ContractAddress
+			if dtoToken.ContractAddressAlt != "" {
+				contractAddress = dtoToken.ContractAddressAlt
+				lr.I().Infof("Token %d: Using ContractAddressAlt: '%s'", i, contractAddress)
+			} else {
+				lr.I().Infof("Token %d: Using ContractAddress: '%s'", i, contractAddress)
+			}
+
+			lr.I().Infof("Token %d: Final contractAddress for cache: '%s'", i, contractAddress)
+
 			cache = dto_cache.IntelligenceToken{
 				ID:              "", // 外部API没有ID
 				EntityID:        "", // 外部API没有EntityID
@@ -109,7 +114,7 @@ func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenRankResp) []dto
 				Symbol:          dtoToken.Symbol,
 				Standard:        nil, // 外部API没有Standard
 				Decimals:        dtoToken.Decimals,
-				ContractAddress: dtoToken.ContractAddress,
+				ContractAddress: contractAddress,
 				Logo:            dtoToken.Logo,
 				Stats: dto_cache.CoinMarketStats{
 					WarningPriceUSD:     "0", // 外部API没有预警价格
@@ -119,12 +124,12 @@ func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenRankResp) []dto
 					HighestIncreaseRate: "0", // 外部API没有涨幅信息
 				},
 				Chain: dto_cache.ChainInfo{
-					ID:        "",                  // 外部API没有链ID
-					NetworkID: "",                  // 外部API没有NetworkID
-					Name:      dtoToken.Chain.Name, // 从Chain字段获取
-					Symbol:    "",                  // 外部API没有Symbol
-					Slug:      dtoToken.Network,    // 使用Network字段作为Slug
-					Logo:      "",                  // 外部API没有链Logo
+					ID:        "",               // 外部API没有链ID
+					NetworkID: "",               // 外部API没有NetworkID
+					Name:      dtoToken.Network, // 使用Network字段作为Name
+					Symbol:    "",               // 外部API没有Symbol
+					Slug:      dtoToken.Network, // 使用Network字段作为Slug
+					Logo:      "",               // 外部API没有链Logo
 				},
 				CreatedAt: dto_cache.CustomTime{}, // 外部API没有创建时间
 				UpdatedAt: dto_cache.CustomTime{}, // 外部API没有更新时间
