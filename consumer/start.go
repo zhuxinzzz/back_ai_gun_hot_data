@@ -6,14 +6,11 @@ import (
 
 // 启动所有消费者
 func StartAllConsumers(ctx context.Context) {
-	// 启动主消费者
-	go StartMainConsumer(ctx)
+	// 启动情报排序数据consumer
+	go StartIntelligenceConsumer(ctx)
 
-	// 这里可以添加更多消费者
-	// 例如：
-	// go StartDataProcessConsumer(ctx)
-	// go StartNotificationConsumer(ctx)
-	// go StartAnalyticsConsumer(ctx)
+	// 启动ETL实体数据consumer
+	go StartETLEntityConsumer(ctx)
 }
 
 // 启动数据处理器消费者（示例）

@@ -7,27 +7,43 @@ import (
 	"fmt"
 	"os"
 
+	"back_ai_gun_data/pkg/consts"
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/services"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func StartMainConsumer(ctx context.Context) {
+func StartIntelligenceConsumer(ctx context.Context) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				lr.E().Errorf("Panic in main: %v", r)
+				lr.E().Errorf("Panic in intelligence consumer: %v", r)
 			}
 		}()
-		if err := startConsumer(ctx); err != nil {
-			lr.E().Errorf("Consumer error: %v", err)
+		if err := startConsumer(ctx, consts.QUEUE_INTELLIGENCE_SORT, consts.CONSUMER_TAG_INTELLIGENCE); err != nil {
+			lr.E().Errorf("Intelligence consumer error: %v", err)
 		}
 	}()
 }
 
-func startConsumer(ctx context.Context) error {
-	conn, err := amqp.Dial(getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"))
+// 启动ETL实体数据consumer
+func StartETLEntityConsumer(ctx context.Context) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				lr.E().Errorf("Panic in ETL entity consumer: %v", r)
+			}
+		}()
+		if err := startConsumer(ctx, consts.QUEUE_ETL_ENTITY_DATA, consts.CONSUMER_TAG_ETL_ENTITY); err != nil {
+			lr.E().Errorf("ETL entity consumer error: %v", err)
+		}
+	}()
+}
+
+// 通用的consumer启动函数
+func startConsumer(ctx context.Context, queueName, consumerTag string) error {
+	conn, err := amqp.Dial(getEnv("RABBITMQ_URL", consts.DEFAULT_RABBITMQ_URL))
 	if err != nil {
 		lr.E().Errorf("Failed to connect to RabbitMQ: %v", err)
 		return fmt.Errorf("connect failed: %w", err)
@@ -41,13 +57,12 @@ func startConsumer(ctx context.Context) error {
 	}
 	defer ch.Close()
 
-	err = ch.Qos(getEnvInt("PREFETCH", 10), 0, false)
+	err = ch.Qos(getEnvInt("PREFETCH", consts.DEFAULT_PREFETCH_COUNT), 0, false)
 	if err != nil {
 		lr.E().Errorf("Failed to set QoS: %v", err)
 		return fmt.Errorf("qos failed: %w", err)
 	}
 
-	queueName := getEnv("QUEUE_NAME", "dogex-sub-dev")
 	_, err = ch.QueueDeclare(queueName, true, false, false, false, nil)
 	if err != nil {
 		lr.E().Errorf("Failed to declare queue: %v", err)
@@ -60,16 +75,16 @@ func startConsumer(ctx context.Context) error {
 		// 不返回错误，继续处理新消息
 	}
 
-	consumerTag := fmt.Sprintf("etl-consumer-token-data-%d", os.Getpid())
-	msgs, err := ch.Consume(queueName, consumerTag, false, false, false, false, nil)
+	fullConsumerTag := fmt.Sprintf("%s-%d", consumerTag, os.Getpid())
+	msgs, err := ch.Consume(queueName, fullConsumerTag, false, false, false, false, nil)
 	if err != nil {
 		lr.E().Errorf("Failed to register consumer: %v", err)
 		return fmt.Errorf("consume failed: %w", err)
 	}
 
-	lr.I().Infof("Consumer started, listening on queue: %s", queueName)
+	lr.I().Infof("Consumer started, listening on queue: %s with tag: %s", queueName, fullConsumerTag)
 
-	var semaphore = make(chan struct{}, getEnvInt("MAX_CONCURRENT", 100))
+	var semaphore = make(chan struct{}, getEnvInt("MAX_CONCURRENT", consts.DEFAULT_MAX_CONCURRENT))
 
 	for {
 		select {
@@ -80,16 +95,16 @@ func startConsumer(ctx context.Context) error {
 			semaphore <- struct{}{} // 获取信号量
 			go func(msg amqp.Delivery) {
 				defer func() { <-semaphore }() // 释放信号量
-				handleMsg(msg)
+				handleMsg(msg, queueName)
 			}(msg)
 		}
 	}
 }
 
-func handleMsg(msg amqp.Delivery) {
+func handleMsg(msg amqp.Delivery, queueName string) {
 	defer func() {
 		if r := recover(); r != nil {
-			lr.E().Errorf("Panic in message handler: %v", r)
+			lr.E().Errorf("Panic in message handler for queue %s: %v", queueName, r)
 			err := msg.Nack(false, true)
 			if err != nil {
 				lr.E().Error(err)
@@ -100,7 +115,7 @@ func handleMsg(msg amqp.Delivery) {
 
 	var messageData model.MessageData
 	if err := json.Unmarshal(msg.Body, &messageData); err != nil {
-		lr.E().Errorf("Failed to unmarshal message: %v", err)
+		lr.E().Errorf("Failed to unmarshal message from queue %s: %v", queueName, err)
 		err := msg.Nack(false, false)
 		if err != nil {
 			lr.E().Error(err)
@@ -111,8 +126,10 @@ func handleMsg(msg amqp.Delivery) {
 
 	// 使用消息的上下文或创建新的上下文
 	ctx := context.Background()
-	if err := services.ProcessMessageData(ctx, &messageData); err != nil {
-		lr.E().Errorf("Failed to process message: %v", err)
+
+	// 根据队列类型选择不同的处理逻辑
+	if err := processMessageByQueue(ctx, &messageData, queueName); err != nil {
+		lr.E().Errorf("Failed to process message from queue %s: %v", queueName, err)
 		err := msg.Nack(false, true)
 		if err != nil {
 			lr.E().Error(err)
@@ -128,11 +145,24 @@ func handleMsg(msg amqp.Delivery) {
 	}
 }
 
-func processHistoricalMessages(ch *amqp.Channel, queueName string) error {
-	lr.I().Infof("Processing historical messages from queue: %s", queueName)
+// 根据队列类型选择处理逻辑
+func processMessageByQueue(ctx context.Context, messageData *model.MessageData, queueName string) error {
+	switch queueName {
+	case consts.QUEUE_INTELLIGENCE_SORT:
+		// 处理情报排序数据
+		return services.ProcessIntelligenceData(ctx, messageData)
+	case consts.QUEUE_ETL_ENTITY_DATA:
+		// 处理ETL实体数据
+		return services.ProcessETLEntityData(ctx, messageData)
+	default:
+		// 默认处理方式
+		return services.ProcessMessageData(ctx, messageData)
+	}
+}
 
+func processHistoricalMessages(ch *amqp.Channel, queueName string) error {
 	processedCount := 0
-	maxHistoricalMessages := getEnvInt("MAX_HISTORICAL_MESSAGES", 1000) // 限制处理的历史消息数量
+	maxHistoricalMessages := getEnvInt("MAX_HISTORICAL_MESSAGES", consts.DEFAULT_MAX_HISTORICAL_MESSAGES)
 
 	for processedCount < maxHistoricalMessages {
 		// 使用Get方法获取消息，不自动确认
@@ -147,19 +177,19 @@ func processHistoricalMessages(ch *amqp.Channel, queueName string) error {
 		}
 
 		// 处理消息
-		handleMsg(msg)
+		handleMsg(msg, queueName)
 		processedCount++
 
 		// 每处理100条消息输出一次进度
-		if processedCount%100 == 0 {
-			lr.I().Infof("Processed %d historical messages", processedCount)
-		}
+		//if processedCount%100 == 0 {
+		//	lr.I().Infof("Processed %d historical messages from queue %s", processedCount, queueName)
+		//}
 	}
 
 	if processedCount > 0 {
-		lr.I().Infof("Finished processing %d historical messages", processedCount)
+		lr.I().Infof("Finished processing %d historical messages from queue %s", processedCount, queueName)
 	} else {
-		lr.I().Info("No historical messages found")
+		lr.I().Infof("No historical messages found in queue %s", queueName)
 	}
 
 	return nil
