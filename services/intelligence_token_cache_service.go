@@ -69,8 +69,8 @@ func stringPtr(s string) *string {
 	return &s
 }
 
-func ProcessIntelligenceData(ctx context.Context, data *model.MessageData) error {
-	lr.I().Infof("Processing intelligence data: %+v", data)
+func ProcessIntelligenceData(ctx context.Context, data *model.IntelligenceMessage) error {
+	//lr.I().Infof("Processing intelligence data: %+v", data)
 
 	// TODO: 实现情报排序数据的处理逻辑
 	// 1. 解析情报数据
@@ -78,10 +78,16 @@ func ProcessIntelligenceData(ctx context.Context, data *model.MessageData) error
 	// 3. 更新数据库
 	// 4. 缓存结果
 
+	err := ProcessMessageData(ctx, data)
+	if err != nil {
+		lr.E().Error(err)
+		return err
+	}
+
 	return nil
 }
 
-func ProcessETLEntityData(ctx context.Context, data *model.MessageData) error {
+func ProcessETLEntityData(ctx context.Context, data *model.ETLEntityMessage) error {
 	lr.I().Infof("Processing ETL entity data: %+v", data)
 
 	// TODO: 实现ETL实体数据的处理逻辑

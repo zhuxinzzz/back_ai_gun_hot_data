@@ -17,8 +17,13 @@ func Test_processRankingAndHotData(t *testing.T) {
 	cache.Init()
 	dao.Init()
 	remote_service.Init()
-	data := &model.MessageData{
-		ID: "019902fa-3cc7-71af-ad42-2c57caa4c25c",
+	data := &model.IntelligenceMessage{
+		BaseMessage: model.BaseMessage{
+			ID: "019902fa-3cc7-71af-ad42-2c57caa4c25c",
+		},
+		Data: model.IntelligenceData{
+			Entities: []model.IntelligenceEntity{},
+		},
 	}
 	entities := analyzeEntities(data)
 	ctx := context.Background()

@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"back_ai_gun_data/pkg/model"
+	"back_ai_gun_data/utils"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -70,10 +71,10 @@ func startConsumer(ctx context.Context, queueName, consumerTag string) error {
 	}
 
 	// 处理历史消息
-	if err := processHistoricalMessages(ch, queueName); err != nil {
-		lr.E().Errorf("Failed to process historical messages: %v", err)
-		// 不返回错误，继续处理新消息
-	}
+	//if err := processHistoricalMessages(ch, queueName); err != nil {
+	//	lr.E().Errorf("Failed to process historical messages: %v", err)
+	//	// 不返回错误，继续处理新消息
+	//}
 
 	fullConsumerTag := fmt.Sprintf("%s-%d", consumerTag, os.Getpid())
 	msgs, err := ch.Consume(queueName, fullConsumerTag, false, false, false, false, nil)
@@ -94,6 +95,11 @@ func startConsumer(ctx context.Context, queueName, consumerTag string) error {
 		case msg := <-msgs:
 			semaphore <- struct{}{} // 获取信号量
 			go func(msg amqp.Delivery) {
+				defer func() {
+					if r := recover(); r != nil {
+						lr.E().Errorf("Panic in message handler for queue %s: %v", queueName, r)
+					}
+				}()
 				defer func() { <-semaphore }() // 释放信号量
 				handleMsg(msg, queueName)
 			}(msg)
@@ -104,7 +110,9 @@ func startConsumer(ctx context.Context, queueName, consumerTag string) error {
 func handleMsg(msg amqp.Delivery, queueName string) {
 	defer func() {
 		if r := recover(); r != nil {
-			lr.E().Errorf("Panic in message handler for queue %s: %v", queueName, r)
+			lr.E().WithFields(lr.F{
+				"backtrace": utils.GetStack(),
+			}).Errorf("Panic in message handler for queue %s: %v", queueName, r)
 			err := msg.Nack(false, true)
 			if err != nil {
 				lr.E().Error(err)
@@ -113,22 +121,32 @@ func handleMsg(msg amqp.Delivery, queueName string) {
 		}
 	}()
 
-	var messageData model.MessageData
-	if err := json.Unmarshal(msg.Body, &messageData); err != nil {
-		lr.E().Errorf("Failed to unmarshal message from queue %s: %v", queueName, err)
-		err := msg.Nack(false, false)
-		if err != nil {
-			lr.E().Error(err)
+	// 根据队列类型解析不同的消息结构
+	var err error
+	switch queueName {
+	case consts.QUEUE_INTELLIGENCE_SORT:
+		var messageData model.IntelligenceMessage
+		if err = json.Unmarshal(msg.Body, &messageData); err != nil {
+			lr.E().Errorf("Failed to unmarshal intelligence message: %v", err)
+			msg.Nack(false, false)
 			return
-		} // 拒绝消息，不重新入队
+		}
+		err = processIntelligenceMessage(context.Background(), &messageData)
+	case consts.QUEUE_ETL_ENTITY_DATA:
+		var messageData model.ETLEntityMessage
+		if err = json.Unmarshal(msg.Body, &messageData); err != nil {
+			lr.E().Errorf("Failed to unmarshal ETL entity message: %v", err)
+			msg.Nack(false, false)
+			return
+		}
+		err = processETLEntityMessage(context.Background(), &messageData)
+	default:
+		lr.E().Errorf("Unknown queue type: %s", queueName)
+		msg.Nack(false, false)
 		return
 	}
 
-	// 使用消息的上下文或创建新的上下文
-	ctx := context.Background()
-
-	// 根据队列类型选择不同的处理逻辑
-	if err := processMessageByQueue(ctx, &messageData, queueName); err != nil {
+	if err != nil {
 		lr.E().Errorf("Failed to process message from queue %s: %v", queueName, err)
 		err := msg.Nack(false, true)
 		if err != nil {
@@ -138,61 +156,19 @@ func handleMsg(msg amqp.Delivery, queueName string) {
 		return
 	}
 
-	err := msg.Ack(false)
+	err = msg.Ack(false)
 	if err != nil {
 		lr.E().Error(err)
 		return
 	}
 }
 
-// 根据队列类型选择处理逻辑
-func processMessageByQueue(ctx context.Context, messageData *model.MessageData, queueName string) error {
-	switch queueName {
-	case consts.QUEUE_INTELLIGENCE_SORT:
-		// 处理情报排序数据
-		return services.ProcessIntelligenceData(ctx, messageData)
-	case consts.QUEUE_ETL_ENTITY_DATA:
-		// 处理ETL实体数据
-		return services.ProcessETLEntityData(ctx, messageData)
-	default:
-		// 默认处理方式
-		return services.ProcessMessageData(ctx, messageData)
-	}
+func processIntelligenceMessage(ctx context.Context, messageData *model.IntelligenceMessage) error {
+	return services.ProcessIntelligenceData(ctx, messageData)
 }
 
-func processHistoricalMessages(ch *amqp.Channel, queueName string) error {
-	processedCount := 0
-	maxHistoricalMessages := getEnvInt("MAX_HISTORICAL_MESSAGES", consts.DEFAULT_MAX_HISTORICAL_MESSAGES)
-
-	for processedCount < maxHistoricalMessages {
-		// 使用Get方法获取消息，不自动确认
-		msg, ok, err := ch.Get(queueName, false)
-		if err != nil {
-			return fmt.Errorf("failed to get message: %w", err)
-		}
-
-		// 如果没有更多消息，退出循环
-		if !ok {
-			break
-		}
-
-		// 处理消息
-		handleMsg(msg, queueName)
-		processedCount++
-
-		// 每处理100条消息输出一次进度
-		//if processedCount%100 == 0 {
-		//	lr.I().Infof("Processed %d historical messages from queue %s", processedCount, queueName)
-		//}
-	}
-
-	if processedCount > 0 {
-		lr.I().Infof("Finished processing %d historical messages from queue %s", processedCount, queueName)
-	} else {
-		lr.I().Infof("No historical messages found in queue %s", queueName)
-	}
-
-	return nil
+func processETLEntityMessage(ctx context.Context, messageData *model.ETLEntityMessage) error {
+	return services.ProcessETLEntityData(ctx, messageData)
 }
 
 func getEnv(key, defaultValue string) string {

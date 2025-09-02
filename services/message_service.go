@@ -23,7 +23,7 @@ const (
 	maxDetections     = 10               // 最多检测10次
 )
 
-func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
+func ProcessMessageData(ctx context.Context, data *model.IntelligenceMessage) error {
 	entities := analyzeEntities(data)
 
 	err := UpdateMarketData(ctx, data.ID)
@@ -39,7 +39,7 @@ func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 	return nil
 }
 
-func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
+func processRankingAndHotData(ctx context.Context, data *model.IntelligenceMessage, entities map[string]interface{}) error {
 	//time.Sleep(detectionInterval)
 
 	cacheTokens, err := ReadTokenCache(ctx, data.ID)
@@ -342,14 +342,20 @@ func setTaskRunning(key string, running bool) {
 	taskRunningMap[key] = running
 }
 
-func analyzeEntities(data *model.MessageData) map[string]interface{} {
-	entities := data.Data.EntitiesExtract.Entities
+func analyzeEntities(data *model.IntelligenceMessage) map[string]interface{} {
+	// 从 IntelligenceData.Entities 中提取代币名称
+	tokenNames := make([]string, 0, len(data.Data.Entities))
+	for _, entity := range data.Data.Entities {
+		if entity.Name != "" {
+			tokenNames = append(tokenNames, entity.Name)
+		}
+	}
 
 	result := map[string]interface{}{
-		"tokens":   entities.Tokens,
-		"projects": entities.Projects,
-		"persons":  entities.Persons,
-		"accounts": entities.Accounts,
+		"tokens":   tokenNames,
+		"projects": []string{},
+		"persons":  []string{},
+		"accounts": []string{},
 	}
 
 	return result

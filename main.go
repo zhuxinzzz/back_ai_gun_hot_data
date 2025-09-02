@@ -1,6 +1,7 @@
 package main
 
 import (
+	"back_ai_gun_data/pkg/dao"
 	"back_ai_gun_data/services/remote_service"
 	"back_ai_gun_data/utils"
 	"context"
@@ -27,6 +28,7 @@ func main() {
 	}()
 
 	lr.Init()
+	dao.Init()
 	cache.Init()
 	remote_service.Init()
 
