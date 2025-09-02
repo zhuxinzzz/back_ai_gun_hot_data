@@ -83,16 +83,13 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 				lr.E().Errorf("Detection %d failed: %v", detectionCount+1, err)
 				// 继续下一次检测，不中断流程
 			}
-
 			detectionCount++
-
 			// 如果不是最后一次检测，等待下次检测
 			if detectionCount < maxDetections {
 				time.Sleep(detectionInterval)
 			}
 		}
 	}
-
 	return nil
 }
 
