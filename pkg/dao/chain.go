@@ -153,3 +153,33 @@ func DeleteChain(db *gorm.DB, uuid string) error {
 	lr.I().Infof("Successfully deleted chain with UUID: %s", uuid)
 	return nil
 }
+
+// GetChainBySlug 根据slug获取链信息
+func GetChainBySlug(slug string) (*dto.Chain, error) {
+	var chain dto.Chain
+	result := pgDB.Where("slug = ? AND is_deleted = false", slug).First(&chain)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			lr.I().Infof("No chain found for slug: %s", slug)
+			return nil, nil
+		}
+		lr.E().Errorf("Failed to get chain by slug: %v", result.Error)
+		return nil, result.Error
+	}
+
+	return &chain, nil
+}
+
+// GetChainIDBySlug 根据slug获取链ID
+func GetChainIDBySlug(slug string) (string, error) {
+	chain, err := GetChainBySlug(slug)
+	if err != nil {
+		return "", err
+	}
+
+	if chain == nil {
+		return "", nil
+	}
+
+	return chain.ID, nil
+}

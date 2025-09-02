@@ -15,6 +15,11 @@ import (
 
 func StartMainConsumer(ctx context.Context) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				lr.E().Errorf("Panic in main: %v", r)
+			}
+		}()
 		if err := startConsumer(ctx); err != nil {
 			lr.E().Errorf("Consumer error: %v", err)
 		}

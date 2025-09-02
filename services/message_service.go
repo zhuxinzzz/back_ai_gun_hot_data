@@ -40,7 +40,7 @@ func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 }
 
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
-	time.Sleep(detectionInterval)
+	//time.Sleep(detectionInterval)
 
 	cacheTokens, err := ReadTokenCache(ctx, data.ID)
 	if err != nil {
@@ -122,6 +122,12 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 					if isNewToken {
 						newToken := toIntelligenceTokenCache(token, "ERC20")
 						newTokens = append(newTokens, newToken)
+
+						// 新币入库到project_chain_data表
+						if err := saveNewTokenToProjectChainData(ctx, token); err != nil {
+							lr.E().Errorf("Failed to save new token to project_chain_data: %v", err)
+							// 入库失败不影响后续流程，继续处理
+						}
 					}
 				}
 			}
@@ -519,4 +525,59 @@ func convertProjectChainDataToCacheTokens(dtoTokens []*dto.ProjectChainData) []d
 	}
 
 	return cacheTokens
+}
+
+func saveNewTokenToProjectChainData(ctx context.Context, token remote.GmGnToken) error {
+	chainID, err := dao.GetChainIDBySlug(token.Network)
+	if err != nil {
+		lr.E().Error()
+		return err
+	}
+	if chainID == "" {
+		return fmt.Errorf("chain not found for network %s", token.Network)
+	}
+
+	existingData, err := dao.GetProjectChainDataByChainIDAndContractAddress(chainID, token.Address)
+	if err != nil {
+		lr.E().Error()
+		return err
+	}
+	if existingData != nil {
+		lr.I().Infof("Token already exists in project_chain_data: name=%s, address=%s, chain=%s",
+			token.Name, token.Address, token.Network)
+		return nil
+	}
+
+	var marketCap, price float64
+	if token.MarketCap != "" {
+		marketCap, _ = strconv.ParseFloat(token.MarketCap, 64)
+	}
+	if token.PriceUSD != "" {
+		price, _ = strconv.ParseFloat(token.PriceUSD, 64)
+	}
+
+	// 设置标准为ERC20（根据传入参数）
+	//standard := "ERC20"
+
+	// 创建新的ProjectChainData记录
+	projectChainData := &dto.ProjectChainData{
+		ChainID:         &chainID,
+		ContractAddress: token.Address,
+		//Standard:         &standard,
+		Decimals:         &token.Decimals,
+		Name:             &token.Name,
+		Symbol:           &token.Symbol,
+		Logo:             &token.Logo,
+		Price24Hours:     &price,
+		MarketCap24Hours: &marketCap,
+		IsVisible:        true,
+		IsDeleted:        false,
+	}
+
+	if err := dao.CreateProjectChainData(projectChainData); err != nil {
+		lr.E().Error(err)
+		return err
+	}
+
+	return nil
 }
