@@ -124,7 +124,6 @@ func UpdateMarketData(ctx context.Context, intelligenceID string) error {
 	//	// 不返回错误，因为缓存更新已经成功
 	//}
 
-	lr.I().Infof("Updated market data for intelligence %s: %d/%d cacheTokens", intelligenceID, updatedCount, len(cacheData))
 	return nil
 }
 

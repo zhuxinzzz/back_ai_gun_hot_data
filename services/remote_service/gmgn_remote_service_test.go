@@ -71,3 +71,13 @@ func TestQueryTokensByName(t *testing.T) {
 	assert.NoError(t, err)
 	t.Log(utils.ToJson(res))
 }
+
+func TestQueryTokenSecurity(t *testing.T) {
+	lr.Init()
+	Init()
+	tokenAddress := "3Q6KfoGoa3zZ65bPcwND4XW2oBxGqisPhCmLSHzQpump"
+
+	res, err := QueryTokenSecurity(tokenAddress, "solana")
+	assert.NoError(t, err)
+	t.Log(utils.ToJson(res))
+}

@@ -14,12 +14,20 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/spf13/cast"
+)
+
+var top3 = 3
+
+const (
+	detectionInterval = 30 * time.Second // 30秒检测间隔
+	maxDetections     = 10               // 最多检测10次
 )
 
 func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 	entities := analyzeEntities(data)
 
-	// 触发市场数据更新
 	err := UpdateMarketData(ctx, data.ID)
 	if err != nil {
 		lr.E().Error(err)
@@ -32,13 +40,6 @@ func ProcessMessageData(ctx context.Context, data *model.MessageData) error {
 
 	return nil
 }
-
-var top3 = 3
-
-const (
-	detectionInterval = 30 * time.Second // 30秒检测间隔
-	maxDetections     = 10               // 最多检测10次
-)
 
 func processRankingAndHotData(ctx context.Context, data *model.MessageData, entities map[string]interface{}) error {
 	//time.Sleep(detectionInterval)
@@ -53,13 +54,27 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 		return nil
 	}
 
-	for detectionCount := 0; detectionCount < maxDetections; detectionCount++ {
-		var searchNames []string
-		for _, t := range cacheTokens {
-			if t.Name != "" {
-				searchNames = append(searchNames, t.Name)
-			}
+	searchNames := make([]string, 0, len(cacheTokens))
+	searchAddresses := make([]string, 0, len(cacheTokens))
+	for _, token := range cacheTokens {
+		if token.Name != "" {
+			searchNames = append(searchNames, token.Name)
 		}
+		if token.ContractAddress != "" {
+			searchAddresses = append(searchAddresses, token.ContractAddress)
+		}
+	}
+
+	dtoTokens, err := dao.GetProjectChainDataByNamesAndAddresses(searchNames, searchAddresses)
+	if err != nil {
+		lr.E().Error(err)
+		return err
+	}
+
+	convertedTokens := convertProjectChainDataToCacheTokens(dtoTokens)
+	cacheTokens = append(cacheTokens, convertedTokens...)
+
+	for detectionCount := 0; detectionCount < maxDetections; detectionCount++ {
 
 		select {
 		case <-ctx.Done():
@@ -194,6 +209,10 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 			lr.E().Error(err)
 			// 缓存写入失败不影响后续流程，继续处理热点数据
 		}
+	}
+
+	if err := SyncShowedTokensToIntelligence(intelligenceID); err != nil {
+		lr.E().Error(err)
 	}
 
 	return nil
@@ -422,4 +441,93 @@ func getTokenNameSet(entities map[string]interface{}) map[string]bool {
 
 	lr.I().Infof("Extracted %d unique token names from message entities", len(tokenNameSet))
 	return tokenNameSet
+}
+
+// convertProjectChainDataToCacheTokens 将 ProjectChainData 转换为 IntelligenceToken
+func convertProjectChainDataToCacheTokens(dtoTokens []*dto.ProjectChainData) []dto_cache.IntelligenceToken {
+	cacheTokens := make([]dto_cache.IntelligenceToken, 0, len(dtoTokens))
+
+	for _, dtoToken := range dtoTokens {
+		if dtoToken == nil {
+			continue
+		}
+		// 跳过没有名称或合约地址的记录
+		if dtoToken.Name == nil || *dtoToken.Name == "" || dtoToken.ContractAddress == "" {
+			continue
+		}
+
+		// 获取链信息
+		chainInfo := dto_cache.ChainInfo{
+			ID:   "",
+			Name: *dtoToken.Name,
+			Slug: "",
+			Logo: "",
+		}
+
+		// 如果有 ChainID，可以查询链信息（这里简化处理）
+		if dtoToken.ChainID != nil {
+			// TODO: 可以根据需要查询链信息
+			chainInfo.ID = *dtoToken.ChainID
+		}
+
+		// 构建市场统计信息
+		stats := dto_cache.CoinMarketStats{
+			WarningPriceUSD:     "",
+			WarningMarketCap:    "",
+			CurrentPriceUSD:     cast.ToString(*dtoToken.Price24Hours),
+			CurrentMarketCap:    cast.ToString(*dtoToken.MarketCap24Hours),
+			HighestIncreaseRate: "",
+		}
+
+		// 填充价格和市值信息
+		if dtoToken.Price24Hours != nil {
+			stats.CurrentPriceUSD = fmt.Sprintf("%.8f", *dtoToken.Price24Hours)
+			stats.WarningPriceUSD = stats.CurrentPriceUSD
+		}
+
+		if dtoToken.MarketCap24Hours != nil {
+			stats.CurrentMarketCap = fmt.Sprintf("%.2f", *dtoToken.MarketCap24Hours)
+			stats.WarningMarketCap = stats.CurrentMarketCap
+		}
+
+		// 构建 IntelligenceToken
+		cacheToken := dto_cache.IntelligenceToken{
+			ID: dtoToken.ID,
+			//EntityID:        "",
+			Name: *dtoToken.Name,
+			//Symbol:          "",
+			Standard:        dtoToken.Standard,
+			Decimals:        *dtoToken.Decimals,
+			ContractAddress: dtoToken.ContractAddress,
+			Logo:            *dtoToken.Logo,
+			Stats:           stats,
+			Chain:           chainInfo,
+			CreatedAt:       dto_cache.CustomTime{Time: dtoToken.CreatedAt},
+			UpdatedAt:       dto_cache.CustomTime{Time: dtoToken.UpdatedAt},
+		}
+
+		// 填充符号信息
+		if dtoToken.Symbol != nil {
+			cacheToken.Symbol = *dtoToken.Symbol
+		}
+
+		// 填充精度信息
+		if dtoToken.Decimals != nil {
+			cacheToken.Decimals = *dtoToken.Decimals
+		}
+
+		// 填充图标信息
+		if dtoToken.Logo != nil {
+			cacheToken.Logo = *dtoToken.Logo
+		}
+
+		// 填充实体ID
+		if dtoToken.EntityID != nil {
+			cacheToken.EntityID = *dtoToken.EntityID
+		}
+
+		cacheTokens = append(cacheTokens, cacheToken)
+	}
+
+	return cacheTokens
 }

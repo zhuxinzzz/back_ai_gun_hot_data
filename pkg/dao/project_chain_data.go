@@ -5,6 +5,7 @@ import (
 	"back_ai_gun_data/pkg/model/dto"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -70,6 +71,48 @@ func GetProjectChainDataByChainIDAndAddresses(chainID string, addresses []string
 
 	//lr.I().Infof("Successfully found %d project chain data records for chain_id: %s", len(dataMap), chainID)
 	return dataMap, nil
+}
+
+// GetProjectChainDataByNamesAndAddresses 根据币名（模糊匹配）和地址查询项目链数据
+func GetProjectChainDataByNamesAndAddresses(names []string, addresses []string) ([]*dto.ProjectChainData, error) {
+	if len(names) == 0 && len(addresses) == 0 {
+		return []*dto.ProjectChainData{}, nil
+	}
+
+	var dataList []dto.ProjectChainData
+	dataList = make([]dto.ProjectChainData, 0, len(addresses))
+	query := GetDB().Where("is_deleted = false")
+
+	// 添加币名模糊匹配条件
+	if len(names) > 0 {
+		var nameConditions []string
+		var nameArgs []interface{}
+		for _, name := range names {
+			nameConditions = append(nameConditions, "name ILIKE ?")
+			nameArgs = append(nameArgs, "%"+name+"%")
+		}
+		query = query.Where("("+strings.Join(nameConditions, " OR ")+")", nameArgs...)
+	}
+
+	// 添加地址精确匹配条件
+	if len(addresses) > 0 {
+		query = query.Where("contract_address IN ?", addresses)
+	}
+
+	result := query.Find(&dataList)
+	if result.Error != nil {
+		lr.E().Errorf("Failed to get project chain data by names: %v, addresses: %v, error: %v", names, addresses, result.Error)
+		return nil, result.Error
+	}
+
+	// 转换为指针切片
+	resultList := make([]*dto.ProjectChainData, len(dataList))
+	for i := range dataList {
+		resultList[i] = &dataList[i]
+	}
+
+	lr.I().Infof("Successfully found %d project chain data records for names: %v, addresses: %v", len(resultList), names, addresses)
+	return resultList, nil
 }
 
 func CreateProjectChainData(data *dto.ProjectChainData) error {
