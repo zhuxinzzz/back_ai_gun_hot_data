@@ -51,10 +51,9 @@ func SyncShowedTokensToIntelligence(intelligenceID string) error {
 		return err
 	}
 
-	showedTokens := make([]dto.ShowedToken, 0)
-	for _, cacheToken := range cacheTokens {
-		showedToken := cacheToken.ToShowedToken()
-		showedTokens = append(showedTokens, showedToken)
+	showedTokens := make([]dto.ShowedToken, 0, len(cacheTokens))
+	for _, ct := range cacheTokens {
+		showedTokens = append(showedTokens, ct.ToShowedToken())
 	}
 
 	if err := dao.UpdateIntelligenceShowedTokens(intelligenceID, showedTokens); err != nil {

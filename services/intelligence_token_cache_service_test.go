@@ -13,7 +13,7 @@ func TestSyncShowedTokensToIntelligence(t *testing.T) {
 	lr.Init()
 	dao.Init()
 	cache.Init()
-	intelligenceID := "0198f0a9-0e77-721b-99df-b94e851375d1"
+	intelligenceID := "019902fa-3cc7-71af-ad42-2c57caa4c25c"
 
 	err := SyncShowedTokensToIntelligence(intelligenceID)
 	assert.NoError(t, err)
