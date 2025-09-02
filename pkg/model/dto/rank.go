@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type SortReq struct {
+type RankReq struct {
 	IntelligenceID      string     `json:"intelligence_id"`
 	IntelligenceHotData []TokenReq `json:"intelligence_hot_data"`
 	TokenList           []TokenReq `json:"token_list"`

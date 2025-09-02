@@ -97,9 +97,9 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 }
 
 func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, searchNames []string, cacheTokens []dto_cache.IntelligenceToken) error {
-	combined := make([]dto_cache.IntelligenceToken, 0, len(cacheTokens)+len(searchNames))
-	combined = append(combined, cacheTokens...) // 旧币放在前面以便稳定排序时保序
+	oldTokens := cacheTokens
 
+	var newTokens []dto_cache.IntelligenceToken
 	if len(searchNames) > 0 {
 		remoteTokens, qErr := queryTokensByName(ctx, searchNames)
 		if qErr == nil {
@@ -111,7 +111,6 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 			}
 
 			// 从remote搜索结果中发现新币（不在缓存中的币）
-			var newTokens []dto_cache.IntelligenceToken
 			for _, tokens := range searchResultsByName {
 				for _, token := range tokens {
 					// 检查是否已存在相同的币种
@@ -133,7 +132,6 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 			for i := range newTokens {
 				tokens, exists := searchResultsByName[newTokens[i].Name]
 				if !exists {
-					combined = append(combined, newTokens[i])
 					continue
 				}
 
@@ -159,8 +157,6 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 					newTokens[i].Stats.WarningPriceUSD = bestToken.PriceUSD
 					newTokens[i].Stats.WarningMarketCap = bestToken.MarketCap
 				}
-
-				combined = append(combined, newTokens[i])
 			}
 		} else {
 			lr.E().Error(qErr)
@@ -168,7 +164,7 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 		}
 	}
 
-	rankedTokens, err := remote_service.CallAdminRankingWithCache(intelligenceID, combined)
+	rankedTokens, err := remote_service.CallAdminRankingWithSeparateTokens(intelligenceID, oldTokens, newTokens)
 	if err != nil {
 		lr.E().Error(err)
 		return err

@@ -19,45 +19,6 @@ func getAdminHost() string {
 	return "http://192.168.4.64:8001"
 }
 
-func ConvertCacheToSortRequest(intelligenceID string, cacheTokens []dto_cache.IntelligenceToken) dto.SortReq {
-	var tokenList []dto.TokenReq
-	for _, cache := range cacheTokens {
-		token := dto.TokenReq{
-			ID:              cache.ID,
-			EntityID:        cache.EntityID,
-			Name:            cache.Name,
-			Symbol:          cache.Symbol,
-			Standard:        cache.Standard,
-			Decimals:        cache.Decimals,
-			ContractAddress: cache.ContractAddress,
-			Logo:            cache.Logo,
-			Stats: dto.CoinMarketStats{
-				WarningPriceUSD:     cache.Stats.WarningPriceUSD,
-				WarningMarketCap:    cache.Stats.WarningMarketCap,
-				CurrentPriceUSD:     cache.Stats.CurrentPriceUSD,
-				CurrentMarketCap:    cache.Stats.CurrentMarketCap,
-				HighestIncreaseRate: cache.Stats.HighestIncreaseRate,
-			},
-			Chain: dto.ChainInfo{
-				ID:   cache.Chain.ID,
-				Name: cache.Chain.Name,
-				Slug: cache.Chain.Slug,
-				Logo: cache.Chain.Logo,
-			},
-			CreatedAt: dto.CustomTime{Time: cache.CreatedAt.Time},
-			UpdatedAt: dto.CustomTime{Time: cache.UpdatedAt.Time},
-		}
-		tokenList = append(tokenList, token)
-	}
-
-	return dto.SortReq{
-		IntelligenceID:      intelligenceID,
-		IntelligenceHotData: []dto.TokenReq{},
-		TokenList:           tokenList,
-	}
-}
-
-// ConvertSortResponseToCache 将 []dto.IntelligenceTokenCacheResp 转换为 []dto_cache.IntelligenceToken
 func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenCacheResp) []dto_cache.IntelligenceToken {
 	var result []dto_cache.IntelligenceToken
 	for _, dtoToken := range dtoTokens {
@@ -104,7 +65,7 @@ func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenCacheResp) []dt
 	return result
 }
 
-func callAdminRanking(req dto.SortReq) ([]dto.IntelligenceTokenCacheResp, error) {
+func callAdminRanking(req dto.RankReq) ([]dto.IntelligenceTokenCacheResp, error) {
 	resp, err := Cli().R().
 		SetHeader("Content-Type", "application/json").
 		SetBody(req).
@@ -129,8 +90,12 @@ func callAdminRanking(req dto.SortReq) ([]dto.IntelligenceTokenCacheResp, error)
 	return tokenList, nil
 }
 
-func CallAdminRankingWithCache(intelligenceID string, cacheTokens []dto_cache.IntelligenceToken) ([]dto_cache.IntelligenceToken, error) {
-	req := ConvertCacheToSortRequest(intelligenceID, cacheTokens)
+func CallAdminRankingWithSeparateTokens(intelligenceID string, oldTokens []dto_cache.IntelligenceToken, newTokens []dto_cache.IntelligenceToken) ([]dto_cache.IntelligenceToken, error) {
+	req := dto.RankReq{
+		IntelligenceID:      intelligenceID,
+		IntelligenceHotData: convertCacheToTokenReq(oldTokens),
+		TokenList:           convertCacheToTokenReq(newTokens),
+	}
 
 	resp, err := callAdminRanking(req)
 	if err != nil {
@@ -139,4 +104,37 @@ func CallAdminRankingWithCache(intelligenceID string, cacheTokens []dto_cache.In
 	}
 
 	return ConvertSortResponseToCache(resp), nil
+}
+
+func convertCacheToTokenReq(cacheTokens []dto_cache.IntelligenceToken) []dto.TokenReq {
+	tokenList := make([]dto.TokenReq, 0, len(cacheTokens))
+	for _, cache := range cacheTokens {
+		token := dto.TokenReq{
+			ID:              cache.ID,
+			EntityID:        cache.EntityID,
+			Name:            cache.Name,
+			Symbol:          cache.Symbol,
+			Standard:        cache.Standard,
+			Decimals:        cache.Decimals,
+			ContractAddress: cache.ContractAddress,
+			Logo:            cache.Logo,
+			Stats: dto.CoinMarketStats{
+				WarningPriceUSD:     cache.Stats.WarningPriceUSD,
+				WarningMarketCap:    cache.Stats.WarningMarketCap,
+				CurrentPriceUSD:     cache.Stats.CurrentPriceUSD,
+				CurrentMarketCap:    cache.Stats.CurrentMarketCap,
+				HighestIncreaseRate: cache.Stats.HighestIncreaseRate,
+			},
+			Chain: dto.ChainInfo{
+				ID:   cache.Chain.ID,
+				Name: cache.Chain.Name,
+				Slug: cache.Chain.Slug,
+				Logo: cache.Chain.Logo,
+			},
+			CreatedAt: dto.CustomTime{Time: cache.CreatedAt.Time},
+			UpdatedAt: dto.CustomTime{Time: cache.UpdatedAt.Time},
+		}
+		tokenList = append(tokenList, token)
+	}
+	return tokenList
 }
