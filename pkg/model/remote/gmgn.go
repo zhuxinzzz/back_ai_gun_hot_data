@@ -3,6 +3,8 @@ package remote
 import (
 	"strconv"
 	"strings"
+
+	"back_ai_gun_data/pkg/model/dto"
 )
 
 // GmGnToken GMGN 代币信息
@@ -226,4 +228,54 @@ func (t *TokenSecurityResp) assessPermissionRisk() string {
 		return "middle" // 单个风险权限
 	}
 	return "low"
+}
+
+// ToProjectChainData 将GmGnToken转换为dto.ProjectChainData
+// 需要传入chainID参数，因为GmGnToken中没有直接的chainID字段
+func (t *GmGnToken) ToProjectChainData(chainID string) *dto.ProjectChainData {
+	// 解析市值
+	var marketCap *float64
+	if t.MarketCap != "" {
+		if parsed, err := strconv.ParseFloat(t.MarketCap, 64); err == nil {
+			marketCap = &parsed
+		}
+	}
+
+	// 解析价格
+	var price *float64
+	if t.PriceUSD != "" {
+		if parsed, err := strconv.ParseFloat(t.PriceUSD, 64); err == nil {
+			price = &parsed
+		}
+	}
+
+	// 解析24小时交易量
+	var volume24h *float64
+	if t.Volume24h != "" {
+		if parsed, err := strconv.ParseFloat(t.Volume24h, 64); err == nil {
+			volume24h = &parsed
+		}
+	}
+
+	// 设置标准为ERC20（根据传入参数）
+	//standard := "ERC20"
+
+	return &dto.ProjectChainData{
+		ChainID:         &chainID,
+		ContractAddress: t.Address,
+		Type:            nil, // 可以根据需要设置
+		//Standard:             &standard,
+		Decimals:             &t.Decimals,
+		Version:              nil, // 可以根据需要设置
+		Name:                 &t.Name,
+		Symbol:               &t.Symbol,
+		Logo:                 &t.Logo,
+		LifiCoinKey:          nil, // 可以根据需要设置
+		TradingVolume24Hours: volume24h,
+		MarketCap24Hours:     marketCap,
+		Price24Hours:         price,
+		Description:          "", // 可以根据需要设置
+		IsVisible:            true,
+		IsDeleted:            false,
+	}
 }
