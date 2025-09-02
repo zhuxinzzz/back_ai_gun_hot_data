@@ -230,8 +230,6 @@ func (t *TokenSecurityResp) assessPermissionRisk() string {
 	return "low"
 }
 
-// ToProjectChainData 将GmGnToken转换为dto.ProjectChainData
-// 需要传入chainID参数，因为GmGnToken中没有直接的chainID字段
 func (t *GmGnToken) ToProjectChainData(chainID string) *dto.ProjectChainData {
 	// 解析市值
 	var marketCap *float64
