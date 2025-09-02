@@ -5,6 +5,7 @@ import (
 	"back_ai_gun_data/pkg/lr"
 	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/pkg/model/dto_cache"
+	"back_ai_gun_data/utils"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,8 +46,8 @@ func TestCallAdminRanking(t *testing.T) {
 	Init()
 
 	intelligenceID := "0198f0a9-0e77-721b-99df-b94e851375d1"
-	//rankedCoins, err := CallAdminRanking(intelligenceID, dtoCacheSliceToDTO(cacheTokens), dtoCacheSliceToDTO(cacheTokens))
-	rankedCoins, err := CallAdminRanking(dto.SortRequest{
+	//rankedCoins, err := callAdminRanking(intelligenceID, dtoCacheSliceToDTO(cacheTokens), dtoCacheSliceToDTO(cacheTokens))
+	rankedCoins, err := callAdminRanking(dto.SortReq{
 		IntelligenceID: intelligenceID,
 		TokenList: []dto.TokenReq{
 			{
@@ -71,4 +72,5 @@ func TestCallAdminRanking(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, rankedCoins)
+	t.Log(utils.ToJson(rankedCoins))
 }

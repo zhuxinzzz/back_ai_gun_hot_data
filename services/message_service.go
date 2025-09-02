@@ -14,8 +14,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/spf13/cast"
 )
 
 var top3 = 3
@@ -470,60 +468,58 @@ func convertProjectChainDataToCacheTokens(dtoTokens []*dto.ProjectChainData) []d
 			chainInfo.ID = *dtoToken.ChainID
 		}
 
+		// 创建本地变量并设置默认值
+		var currentPriceUSD string
+		var currentMarketCap string
+
+		// 安全赋值，判断数据源是否为空
+		if dtoToken.Price24Hours != nil {
+			currentPriceUSD = fmt.Sprintf("%.8f", *dtoToken.Price24Hours)
+		}
+		if dtoToken.MarketCap24Hours != nil {
+			currentMarketCap = fmt.Sprintf("%.2f", *dtoToken.MarketCap24Hours)
+		}
+
 		// 构建市场统计信息
 		stats := dto_cache.CoinMarketStats{
-			WarningPriceUSD:     "",
-			WarningMarketCap:    "",
-			CurrentPriceUSD:     cast.ToString(*dtoToken.Price24Hours),
-			CurrentMarketCap:    cast.ToString(*dtoToken.MarketCap24Hours),
+			WarningPriceUSD:     currentPriceUSD,
+			WarningMarketCap:    currentMarketCap,
+			CurrentPriceUSD:     currentPriceUSD,
+			CurrentMarketCap:    currentMarketCap,
 			HighestIncreaseRate: "",
 		}
 
-		// 填充价格和市值信息
-		if dtoToken.Price24Hours != nil {
-			stats.CurrentPriceUSD = fmt.Sprintf("%.8f", *dtoToken.Price24Hours)
-			stats.WarningPriceUSD = stats.CurrentPriceUSD
+		var symbol string
+		var decimals int
+		var logo string
+		var entityID string
+		if dtoToken.Symbol != nil {
+			symbol = *dtoToken.Symbol
 		}
-
-		if dtoToken.MarketCap24Hours != nil {
-			stats.CurrentMarketCap = fmt.Sprintf("%.2f", *dtoToken.MarketCap24Hours)
-			stats.WarningMarketCap = stats.CurrentMarketCap
+		if dtoToken.Decimals != nil {
+			decimals = *dtoToken.Decimals
+		}
+		if dtoToken.Logo != nil {
+			logo = *dtoToken.Logo
+		}
+		if dtoToken.EntityID != nil {
+			entityID = *dtoToken.EntityID
 		}
 
 		// 构建 IntelligenceToken
 		cacheToken := dto_cache.IntelligenceToken{
-			ID: dtoToken.ID,
-			//EntityID:        "",
-			Name: *dtoToken.Name,
-			//Symbol:          "",
+			ID:              dtoToken.ID,
+			EntityID:        entityID,
+			Name:            *dtoToken.Name,
+			Symbol:          symbol,
 			Standard:        dtoToken.Standard,
-			Decimals:        *dtoToken.Decimals,
+			Decimals:        decimals,
 			ContractAddress: dtoToken.ContractAddress,
-			Logo:            *dtoToken.Logo,
+			Logo:            logo,
 			Stats:           stats,
 			Chain:           chainInfo,
 			CreatedAt:       dto_cache.CustomTime{Time: dtoToken.CreatedAt},
 			UpdatedAt:       dto_cache.CustomTime{Time: dtoToken.UpdatedAt},
-		}
-
-		// 填充符号信息
-		if dtoToken.Symbol != nil {
-			cacheToken.Symbol = *dtoToken.Symbol
-		}
-
-		// 填充精度信息
-		if dtoToken.Decimals != nil {
-			cacheToken.Decimals = *dtoToken.Decimals
-		}
-
-		// 填充图标信息
-		if dtoToken.Logo != nil {
-			cacheToken.Logo = *dtoToken.Logo
-		}
-
-		// 填充实体ID
-		if dtoToken.EntityID != nil {
-			cacheToken.EntityID = *dtoToken.EntityID
 		}
 
 		cacheTokens = append(cacheTokens, cacheToken)

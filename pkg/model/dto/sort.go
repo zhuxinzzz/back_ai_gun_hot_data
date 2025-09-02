@@ -6,11 +6,12 @@ import (
 	"time"
 )
 
-type SortRequest struct {
+type SortReq struct {
 	IntelligenceID      string     `json:"intelligence_id"`
 	IntelligenceHotData []TokenReq `json:"intelligence_hot_data"`
 	TokenList           []TokenReq `json:"token_list"`
 }
+
 type TokenReq struct {
 	ID              string          `json:"id"`               // project chain data id
 	EntityID        string          `json:"entity_id"`        // 实体ID

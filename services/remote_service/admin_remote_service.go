@@ -19,7 +19,7 @@ func getAdminHost() string {
 	return "http://192.168.4.64:8001"
 }
 
-func ConvertCacheToSortRequest(intelligenceID string, cacheTokens []dto_cache.IntelligenceToken) dto.SortRequest {
+func ConvertCacheToSortRequest(intelligenceID string, cacheTokens []dto_cache.IntelligenceToken) dto.SortReq {
 	var tokenList []dto.TokenReq
 	for _, cache := range cacheTokens {
 		token := dto.TokenReq{
@@ -50,7 +50,7 @@ func ConvertCacheToSortRequest(intelligenceID string, cacheTokens []dto_cache.In
 		tokenList = append(tokenList, token)
 	}
 
-	return dto.SortRequest{
+	return dto.SortReq{
 		IntelligenceID:      intelligenceID,
 		IntelligenceHotData: []dto.TokenReq{},
 		TokenList:           tokenList,
@@ -104,7 +104,7 @@ func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenCacheResp) []dt
 	return result
 }
 
-func CallAdminRanking(req dto.SortRequest) ([]dto.IntelligenceTokenCacheResp, error) {
+func callAdminRanking(req dto.SortReq) ([]dto.IntelligenceTokenCacheResp, error) {
 	resp, err := Cli().R().
 		SetHeader("Content-Type", "application/json").
 		SetBody(req).
@@ -132,7 +132,7 @@ func CallAdminRanking(req dto.SortRequest) ([]dto.IntelligenceTokenCacheResp, er
 func CallAdminRankingWithCache(intelligenceID string, cacheTokens []dto_cache.IntelligenceToken) ([]dto_cache.IntelligenceToken, error) {
 	req := ConvertCacheToSortRequest(intelligenceID, cacheTokens)
 
-	resp, err := CallAdminRanking(req)
+	resp, err := callAdminRanking(req)
 	if err != nil {
 		lr.E().Error(err)
 		return nil, err
