@@ -96,7 +96,7 @@ func processRankingAndHotData(ctx context.Context, data *model.MessageData, enti
 func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, searchNames []string, cacheTokens []dto_cache.IntelligenceToken) error {
 	oldTokens := cacheTokens
 
-	var newTokens []dto_cache.IntelligenceToken
+	var newTokens []remote.GmGnToken
 	if len(searchNames) > 0 {
 		remoteTokens, qErr := queryTokensByName(ctx, searchNames)
 		if qErr == nil {
@@ -120,8 +120,7 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 					}
 
 					if isNewToken {
-						newToken := toIntelligenceTokenCache(token, "ERC20")
-						newTokens = append(newTokens, newToken)
+						newTokens = append(newTokens, token)
 
 						// 新币入库到project_chain_data表
 						if err := saveNewTokenToProjectChainData(ctx, token); err != nil {
@@ -132,6 +131,7 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 				}
 			}
 
+			// 为newTokens填充市场数据（选择市值最高的token）
 			for i := range newTokens {
 				tokens, exists := searchResultsByName[newTokens[i].Name]
 				if !exists {
@@ -143,8 +143,8 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 				var bestMarketCap float64
 				for _, token := range tokens {
 					if token.Name == newTokens[i].Name &&
-						strings.EqualFold(token.Address, newTokens[i].ContractAddress) &&
-						strings.EqualFold(token.Network, newTokens[i].Chain.Slug) {
+						strings.EqualFold(token.Address, newTokens[i].Address) &&
+						strings.EqualFold(token.Network, newTokens[i].Network) {
 						marketCap, _ := strconv.ParseFloat(token.MarketCap, 64)
 						if bestToken == nil || marketCap > bestMarketCap {
 							bestToken = &token
@@ -154,11 +154,8 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 				}
 
 				if bestToken != nil {
-					// 填充市场数据
-					newTokens[i].Stats.CurrentPriceUSD = bestToken.PriceUSD
-					newTokens[i].Stats.CurrentMarketCap = bestToken.MarketCap
-					newTokens[i].Stats.WarningPriceUSD = bestToken.PriceUSD
-					newTokens[i].Stats.WarningMarketCap = bestToken.MarketCap
+					// 更新为最佳token（市值最高的）
+					newTokens[i] = *bestToken
 				}
 			}
 		} else {
@@ -167,7 +164,7 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 		}
 	}
 
-	rankedTokens, err := remote_service.CallAdminRankingWithSeparateTokens(intelligenceID, oldTokens, newTokens)
+	rankedTokens, err := remote_service.CallAdminRankingWithGmGnTokens(intelligenceID, oldTokens, newTokens)
 	if err != nil {
 		lr.E().Error(err)
 		return err
@@ -548,31 +545,7 @@ func saveNewTokenToProjectChainData(ctx context.Context, token remote.GmGnToken)
 		return nil
 	}
 
-	var marketCap, price float64
-	if token.MarketCap != "" {
-		marketCap, _ = strconv.ParseFloat(token.MarketCap, 64)
-	}
-	if token.PriceUSD != "" {
-		price, _ = strconv.ParseFloat(token.PriceUSD, 64)
-	}
-
-	// 设置标准为ERC20（根据传入参数）
-	//standard := "ERC20"
-
-	// 创建新的ProjectChainData记录
-	projectChainData := &dto.ProjectChainData{
-		ChainID:         &chainID,
-		ContractAddress: token.Address,
-		//Standard:         &standard,
-		Decimals:         &token.Decimals,
-		Name:             &token.Name,
-		Symbol:           &token.Symbol,
-		Logo:             &token.Logo,
-		Price24Hours:     &price,
-		MarketCap24Hours: &marketCap,
-		IsVisible:        true,
-		IsDeleted:        false,
-	}
+	projectChainData := token.ToProjectChainData(chainID)
 
 	if err := dao.CreateProjectChainData(projectChainData); err != nil {
 		lr.E().Error(err)

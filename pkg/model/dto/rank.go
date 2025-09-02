@@ -1,18 +1,36 @@
 package dto
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 )
 
 type RankReq struct {
-	IntelligenceID      string     `json:"intelligence_id"`
-	IntelligenceHotData []TokenReq `json:"intelligence_hot_data"`
-	TokenList           []TokenReq `json:"token_list"`
+	IntelligenceID      string        `json:"intelligence_id"`
+	IntelligenceHotData []OldTokenReq `json:"intelligence_hot_data"`
+	TokenList           []NewTokenReq `json:"token_list"`
 }
 
-type TokenReq struct {
+type NewTokenReq struct {
+	Address     string `json:"contractAddress"`
+	Chain       string `json:"chain"`
+	ChainID     int    `json:"chain_id"`
+	Decimals    int    `json:"decimals"`
+	Logo        string `json:"logo"`
+	MarketCap   string `json:"market_cap"`
+	Name        string `json:"name"`
+	Network     string `json:"network"`
+	PriceUSD    string `json:"price_usd"`
+	Symbol      string `json:"symbol"`
+	TotalSupply string `json:"total_supply"`
+	Volume24h   string `json:"volume_24h"`
+	IsInternal  bool   `json:"is_internal"`
+	Liquidity   string `json:"liquidity"`
+}
+
+type OldTokenReq struct {
 	ID              string          `json:"id"`               // project chain data id
 	EntityID        string          `json:"entity_id"`        // 实体ID
 	Name            string          `json:"name"`             // 币名称
@@ -56,7 +74,7 @@ func (ct *CustomTime) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + ct.Time.Format("2006-01-02T15:04:05.000") + `"`), nil
 }
 
-type IntelligenceTokenCacheResp struct {
+type IntelligenceTokenRankResp struct {
 	ID              string          `json:"id"`
 	EntityID        string          `json:"entity_id"`
 	Name            string          `json:"name"`
@@ -69,6 +87,16 @@ type IntelligenceTokenCacheResp struct {
 	Chain           ChainInfo       `json:"chain"`
 	CreatedAt       string          `json:"created_at"`
 	UpdatedAt       string          `json:"updated_at"`
+
+	// 外部API字段
+	Network          string `json:"network"`
+	ChainID          int    `json:"chain_id"`
+	PriceUSD         string `json:"price_usd"`
+	TotalSupply      string `json:"total_supply"`
+	Volume24h        string `json:"volume_24h"`
+	IsInternal       bool   `json:"is_internal"`
+	Liquidity        string `json:"liquidity"`
+	CurrentMarketCap string `json:"current_market_cap"`
 }
 
 type CoinMarketStats struct {
@@ -84,4 +112,34 @@ type ChainInfo struct {
 	Name string `json:"name"`
 	Slug string `json:"slug"`
 	Logo string `json:"logo"`
+}
+
+func (c *ChainInfo) UnmarshalJSON(data []byte) error {
+	// 尝试解析为字符串
+	var chainStr string
+	if err := json.Unmarshal(data, &chainStr); err == nil {
+		// 如果是字符串，设置到Name字段
+		c.Name = chainStr
+		c.Slug = chainStr
+		return nil
+	}
+
+	// 如果不是字符串，尝试解析为对象
+	type chainObj struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+		Logo string `json:"logo"`
+	}
+
+	var obj chainObj
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+
+	c.ID = obj.ID
+	c.Name = obj.Name
+	c.Slug = obj.Slug
+	c.Logo = obj.Logo
+	return nil
 }

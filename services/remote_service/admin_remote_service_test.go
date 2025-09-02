@@ -49,7 +49,7 @@ func TestCallAdminRanking(t *testing.T) {
 	//rankedCoins, err := callAdminRanking(intelligenceID, dtoCacheSliceToDTO(cacheTokens), dtoCacheSliceToDTO(cacheTokens))
 	rankedCoins, err := callAdminRanking(dto.RankReq{
 		IntelligenceID: intelligenceID,
-		TokenList: []dto.TokenReq{
+		TokenList: []dto.OldTokenReq{
 			{
 				ID: "1",
 				Chain: dto.ChainInfo{

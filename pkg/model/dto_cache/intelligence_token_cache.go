@@ -154,3 +154,31 @@ func (c *IntelligenceToken) ToShowedToken() dto.ShowedToken {
 		WarningMarketCap: c.Stats.WarningMarketCap,
 	}
 }
+
+func (c *IntelligenceToken) ToOldTokenReq() dto.OldTokenReq {
+	return dto.OldTokenReq{
+		ID:              c.ID,
+		EntityID:        c.EntityID,
+		Name:            c.Name,
+		Symbol:          c.Symbol,
+		Standard:        c.Standard,
+		Decimals:        c.Decimals,
+		ContractAddress: c.ContractAddress,
+		Logo:            c.Logo,
+		Stats: dto.CoinMarketStats{
+			WarningPriceUSD:     c.Stats.WarningPriceUSD,
+			WarningMarketCap:    c.Stats.WarningMarketCap,
+			CurrentPriceUSD:     c.Stats.CurrentPriceUSD,
+			CurrentMarketCap:    c.Stats.CurrentMarketCap,
+			HighestIncreaseRate: c.Stats.HighestIncreaseRate,
+		},
+		Chain: dto.ChainInfo{
+			ID:   c.Chain.ID,
+			Name: c.Chain.Name,
+			Slug: c.Chain.Slug,
+			Logo: c.Chain.Logo,
+		},
+		CreatedAt: dto.CustomTime{Time: c.CreatedAt.Time},
+		UpdatedAt: dto.CustomTime{Time: c.UpdatedAt.Time},
+	}
+}

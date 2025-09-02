@@ -40,6 +40,25 @@ func (t *GmGnToken) IsSupportedChain() bool {
 	return supportedChains[strings.ToLower(t.Network)]
 }
 
+func (t *GmGnToken) ToNewTokenReq() dto.NewTokenReq {
+	return dto.NewTokenReq{
+		Address:     t.Address,
+		Chain:       t.Chain,
+		ChainID:     t.ChainID,
+		Decimals:    t.Decimals,
+		Logo:        t.Logo,
+		MarketCap:   t.MarketCap,
+		Name:        t.Name,
+		Network:     t.Network,
+		PriceUSD:    t.PriceUSD,
+		Symbol:      t.Symbol,
+		TotalSupply: t.TotalSupply,
+		Volume24h:   t.Volume24h,
+		IsInternal:  t.IsInternal,
+		Liquidity:   t.Liquidity,
+	}
+}
+
 // TokenQueryParams 代币查询参数
 type TokenQueryParams struct {
 	Q      string `json:"q"`      // 查询关键词
