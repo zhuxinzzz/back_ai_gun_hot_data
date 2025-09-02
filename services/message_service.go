@@ -325,29 +325,10 @@ func detectNewTokens(ctx context.Context, intelligenceID string, searchNames []s
 	return false
 }
 
-// 简单的任务状态管理
 var (
 	taskRunningMap = make(map[string]bool)
 	taskMutex      sync.RWMutex
 )
-
-// toIntelligenceTokenCache 将GmGnToken转换为IntelligenceTokenCache
-// 不足的字段通过参数传入
-func toIntelligenceTokenCache(token remote.GmGnToken, standard string) dto_cache.IntelligenceToken {
-	return dto_cache.IntelligenceToken{
-		Name:            token.Name,
-		Symbol:          token.Symbol,
-		Standard:        &standard,
-		Decimals:        token.Decimals,
-		ContractAddress: token.Address,
-		Logo:            token.Logo,
-		Chain: dto_cache.ChainInfo{
-			Slug: strings.ToLower(token.Network),
-		},
-		CreatedAt: dto_cache.CustomTime{Time: time.Now()},
-		UpdatedAt: dto_cache.CustomTime{Time: time.Now()},
-	}
-}
 
 func isTaskRunning(key string) bool {
 	taskMutex.RLock()
@@ -452,10 +433,12 @@ func convertProjectChainDataToCacheTokens(dtoTokens []*dto.ProjectChainData) []d
 
 		// 获取链信息
 		chainInfo := dto_cache.ChainInfo{
-			ID:   "",
-			Name: *dtoToken.Name,
-			Slug: "",
-			Logo: "",
+			ID:        "",
+			NetworkID: "",
+			Name:      *dtoToken.Name,
+			Symbol:    "",
+			Slug:      "",
+			Logo:      "",
 		}
 
 		// 如果有 ChainID，可以查询链信息（这里简化处理）

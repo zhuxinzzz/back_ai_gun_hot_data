@@ -66,10 +66,12 @@ type CoinMarketStats struct {
 
 // ChainInfo 链信息
 type ChainInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
-	Logo string `json:"logo"`
+	ID        string `json:"id"`
+	NetworkID string `json:"network_id"`
+	Name      string `json:"name"`
+	Symbol    string `json:"symbol"`
+	Slug      string `json:"slug"`
+	Logo      string `json:"logo"`
 }
 
 // GetUniqueKey 获取唯一标识符，用于map查找

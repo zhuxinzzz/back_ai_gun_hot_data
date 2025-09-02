@@ -119,10 +119,12 @@ func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenRankResp) []dto
 					HighestIncreaseRate: "0", // 外部API没有涨幅信息
 				},
 				Chain: dto_cache.ChainInfo{
-					ID:   "",                  // 外部API没有链ID
-					Name: dtoToken.Chain.Name, // 从Chain字段获取
-					Slug: dtoToken.Network,    // 使用Network字段作为Slug
-					Logo: "",                  // 外部API没有链Logo
+					ID:        "",                  // 外部API没有链ID
+					NetworkID: "",                  // 外部API没有NetworkID
+					Name:      dtoToken.Chain.Name, // 从Chain字段获取
+					Symbol:    "",                  // 外部API没有Symbol
+					Slug:      dtoToken.Network,    // 使用Network字段作为Slug
+					Logo:      "",                  // 外部API没有链Logo
 				},
 				CreatedAt: dto_cache.CustomTime{}, // 外部API没有创建时间
 				UpdatedAt: dto_cache.CustomTime{}, // 外部API没有更新时间
@@ -146,10 +148,12 @@ func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenRankResp) []dto
 					HighestIncreaseRate: dtoToken.Stats.HighestIncreaseRate,
 				},
 				Chain: dto_cache.ChainInfo{
-					ID:   dtoToken.Chain.ID,
-					Name: dtoToken.Chain.Name,
-					Slug: dtoToken.Chain.Slug,
-					Logo: dtoToken.Chain.Logo,
+					ID:        dtoToken.Chain.ID,
+					NetworkID: dtoToken.Chain.NetworkID,
+					Name:      dtoToken.Chain.Name,
+					Symbol:    dtoToken.Chain.Symbol,
+					Slug:      dtoToken.Chain.Slug,
+					Logo:      dtoToken.Chain.Logo,
 				},
 				CreatedAt: createdAt,
 				UpdatedAt: updatedAt,

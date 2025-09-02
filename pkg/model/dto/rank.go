@@ -108,10 +108,12 @@ type CoinMarketStats struct {
 }
 
 type ChainInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
-	Logo string `json:"logo"`
+	ID        string `json:"id"`
+	NetworkID string `json:"network_id"`
+	Name      string `json:"name"`
+	Symbol    string `json:"symbol"`
+	Slug      string `json:"slug"`
+	Logo      string `json:"logo"`
 }
 
 func (c *ChainInfo) UnmarshalJSON(data []byte) error {
@@ -126,10 +128,12 @@ func (c *ChainInfo) UnmarshalJSON(data []byte) error {
 
 	// 如果不是字符串，尝试解析为对象
 	type chainObj struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-		Logo string `json:"logo"`
+		ID        string `json:"id"`
+		NetworkID string `json:"network_id"`
+		Name      string `json:"name"`
+		Symbol    string `json:"symbol"`
+		Slug      string `json:"slug"`
+		Logo      string `json:"logo"`
 	}
 
 	var obj chainObj
@@ -138,7 +142,9 @@ func (c *ChainInfo) UnmarshalJSON(data []byte) error {
 	}
 
 	c.ID = obj.ID
+	c.NetworkID = obj.NetworkID
 	c.Name = obj.Name
+	c.Symbol = obj.Symbol
 	c.Slug = obj.Slug
 	c.Logo = obj.Logo
 	return nil
