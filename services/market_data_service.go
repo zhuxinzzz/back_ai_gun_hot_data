@@ -100,11 +100,6 @@ func UpdateMarketData(ctx context.Context, intelligenceID string) error {
 				}
 			}
 
-			// 如果合约地址为空，更新合约地址
-			if cacheData[index].ContractAddress == "" && matchedToken.Address != "" {
-				cacheData[index].ContractAddress = matchedToken.Address
-			}
-
 			updatedCount++
 		} else {
 			//lr.E().Errorf("No GMGN data found for token: %s", cacheTokenIns.Name)
