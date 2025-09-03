@@ -95,6 +95,10 @@ func ProcessETLEntityData(ctx context.Context, data *model.ETLEntityMessage) err
 	// 2. 同步币信息
 	// 3. 更新实体关联
 	// 4. 触发相关业务逻辑
-
+	err := TriggerMarketDataUpdate(ctx, data.ID)
+	if err != nil {
+		lr.E().Error(err)
+		return err
+	}
 	return nil
 }

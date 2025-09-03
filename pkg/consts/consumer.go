@@ -9,7 +9,7 @@ const (
 	QUEUE_ETL_ENTITY_DATA = "etl-entity-data"
 
 	// RabbitMQ连接配置
-	DEFAULT_RABBITMQ_URL = "amqp://consumer:biteagle8888@192.168.10.14:5672/"
+	DEFAULT_RABBITMQ_URL = "amqp://guest:guest@localhost:5672/"
 
 	// Consumer配置
 	DEFAULT_PREFETCH_COUNT          = 10

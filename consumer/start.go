@@ -10,8 +10,7 @@ func StartAllConsumers(ctx context.Context) {
 	go StartIntelligenceConsumer(ctx)
 
 	// 启动ETL实体数据consumer
-	// todo 暂时不开启
-	//go StartETLEntityConsumer(ctx)
+	go StartETLEntityConsumer(ctx)
 }
 
 // 启动数据处理器消费者（示例）

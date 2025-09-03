@@ -84,7 +84,7 @@ func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.Int
 	if err != nil {
 		// 如果缓存不存在，返回空数据而不是错误
 		if err.Error() == "redis: nil" {
-			lr.E().Error(err)
+			//lr.E().Error(err)
 			return []dto_cache.IntelligenceToken{}, nil
 		}
 		return nil, err

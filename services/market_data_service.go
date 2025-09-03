@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-// UpdateMarketData 更新市场数据业务逻辑
 func UpdateMarketData(ctx context.Context, intelligenceID string) error {
 	cacheData, err := ReadTokenCache(ctx, intelligenceID)
 	if err != nil {
@@ -108,7 +107,7 @@ func UpdateMarketData(ctx context.Context, intelligenceID string) error {
 
 			updatedCount++
 		} else {
-			lr.E().Errorf("No GMGN data found for token: %s", cacheTokenIns.Name)
+			//lr.E().Errorf("No GMGN data found for token: %s", cacheTokenIns.Name)
 		}
 	}
 
@@ -127,9 +126,10 @@ func UpdateMarketData(ctx context.Context, intelligenceID string) error {
 	return nil
 }
 
-// TriggerMarketDataUpdate 触发市场数据更新
-func TriggerMarketDataUpdate(ctx context.Context, intelligenceID string) {
+func TriggerMarketDataUpdate(ctx context.Context, intelligenceID string) (err error) {
 	if err := UpdateMarketData(ctx, intelligenceID); err != nil {
 		lr.E().Errorf("Failed to update market data for intelligence %s: %v", intelligenceID, err)
+		return err
 	}
+	return nil
 }
