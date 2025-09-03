@@ -22,6 +22,7 @@ func StartIntelligenceConsumer(ctx context.Context) {
 				lr.E().Errorf("Panic in intelligence consumer: %v", r)
 			}
 		}()
+
 		if err := startConsumer(ctx, consts.QUEUE_INTELLIGENCE_SORT, consts.CONSUMER_TAG_INTELLIGENCE); err != nil {
 			lr.E().Errorf("Intelligence consumer error: %v", err)
 		}
