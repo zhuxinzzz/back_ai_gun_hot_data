@@ -16,7 +16,7 @@ var cli *resty.Client
 
 func Init() {
 	cli = resty.New().
-		SetTimeout(30 * time.Second).
+		//SetTimeout(30 * time.Second).
 		SetRetryCount(3).
 		SetRetryWaitTime(1 * time.Second).
 		SetRetryMaxWaitTime(5 * time.Second)

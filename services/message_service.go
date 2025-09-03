@@ -120,10 +120,10 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 						newTokens = append(newTokens, token)
 
 						// 新币入库到project_chain_data表
-						if err := saveNewTokenToProjectChainData(ctx, token); err != nil {
-							lr.E().Errorf("Failed to save new token to project_chain_data: %v", err)
-							// 入库失败不影响后续流程，继续处理
-						}
+						//if err := saveNewTokenToProjectChainData(ctx, token); err != nil {
+						//	lr.E().Errorf("Failed to save new token to project_chain_data: %v", err)
+						// 入库失败不影响后续流程，继续处理
+						//}
 					}
 				}
 			}

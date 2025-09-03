@@ -2,6 +2,7 @@ package producer
 
 import (
 	"back_ai_gun_data/pkg/lr"
+	"back_ai_gun_data/utils"
 	"context"
 	"encoding/json"
 	"time"
@@ -29,10 +30,10 @@ func SendNewTokensMessage(ctx context.Context, newTokens interface{}) error {
 
 	// 发送消息
 	err = channel.PublishWithContext(ctx,
-		"",               // exchange
-		"ai_token_queue", // routing key
-		false,            // mandatory
-		false,            // immediate
+		"",    // exchange
+		"",    // routing key
+		false, // mandatory
+		false, // immediate
 		amqp.Publishing{
 			ContentType:  "application/json",
 			Body:         body,
