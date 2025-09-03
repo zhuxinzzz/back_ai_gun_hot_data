@@ -18,7 +18,7 @@ func UpdateMarketData(ctx context.Context, intelligenceID string) error {
 		return fmt.Errorf("failed to read intelligence token cache: %w", err)
 	}
 	if len(cacheData) == 0 {
-		lr.E().Errorf("No cacheTokens found in cache for intelligence %s", intelligenceID)
+		//lr.E().Errorf("No cacheTokens found in cache for intelligence %s", intelligenceID)
 		return nil
 	}
 

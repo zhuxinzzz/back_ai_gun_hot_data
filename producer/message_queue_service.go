@@ -88,7 +88,6 @@ func ensureConnection() error {
 	return nil
 }
 
-// SendNewTokensMessage 发送新币消息到队列
 func SendNewTokensMessage(ctx context.Context, newTokens interface{}) error {
 	if err := ensureConnection(); err != nil {
 		return fmt.Errorf("failed to ensure connection: %w", err)
@@ -127,7 +126,6 @@ func SendNewTokensMessage(ctx context.Context, newTokens interface{}) error {
 	return nil
 }
 
-// SendNewTokensMessageAsync 异步发送新币消息到队列
 func SendNewTokensMessageAsync(ctx context.Context, newTokens interface{}) {
 	go func() {
 		defer func() {

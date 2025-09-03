@@ -129,10 +129,9 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 			}
 
 			if len(newTokens) > 0 {
-				if err := producer.SendNewTokensMessage(ctx, newTokens); err != nil {
-					lr.E().Errorf("Failed to send new tokens to message queue: %v", err)
-				}
+				producer.SendNewTokensMessageAsync(ctx, newTokens)
 			}
+
 		} else {
 			lr.E().Error(qErr)
 			return qErr
