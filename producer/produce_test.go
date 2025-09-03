@@ -1,12 +1,16 @@
 package producer
 
 import (
+	"back_ai_gun_data/pkg/lr"
 	"context"
 	"testing"
 	"time"
 )
 
 func TestMessageQueueService(t *testing.T) {
+	// 初始化日志
+	lr.Init()
+
 	// 测试连接
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

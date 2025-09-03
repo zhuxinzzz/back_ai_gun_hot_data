@@ -75,7 +75,7 @@ func convertGmGnTokensToNewTokenReq(gmgnTokens []remote.GmGnToken) []dto.NewToke
 
 func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenRankResp) []dto_cache.IntelligenceToken {
 	result := make([]dto_cache.IntelligenceToken, 0, len(dtoTokens))
-	for i, dtoToken := range dtoTokens {
+	for _, dtoToken := range dtoTokens {
 		// 判断是否为外部API数据结构
 		isExternalAPI := dtoToken.Network != "" || dtoToken.PriceUSD != "" || dtoToken.Volume24h != ""
 
@@ -100,12 +100,12 @@ func ConvertSortResponseToCache(dtoTokens []dto.IntelligenceTokenRankResp) []dto
 			contractAddress := dtoToken.ContractAddress
 			if dtoToken.ContractAddressAlt != "" {
 				contractAddress = dtoToken.ContractAddressAlt
-				lr.I().Infof("Token %d: Using ContractAddressAlt: '%s'", i, contractAddress)
+				//lr.I().Infof("Token %d: Using ContractAddressAlt: '%s'", i, contractAddress)
 			} else {
-				lr.I().Infof("Token %d: Using ContractAddress: '%s'", i, contractAddress)
+				//lr.I().Infof("Token %d: Using ContractAddress: '%s'", i, contractAddress)
 			}
 
-			lr.I().Infof("Token %d: Final contractAddress for cache: '%s'", i, contractAddress)
+			//lr.I().Infof("Token %d: Final contractAddress for cache: '%s'", i, contractAddress)
 
 			cache = dto_cache.IntelligenceToken{
 				ID:              "", // 外部API没有ID
