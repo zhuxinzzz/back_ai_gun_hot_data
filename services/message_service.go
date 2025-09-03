@@ -256,6 +256,10 @@ func queryTokensByName(ctx context.Context, searchNames []string) ([]remote.GmGn
 	if limit < 10 {
 		limit = 10
 	}
+	// 确保 limit 不超过 API 限制 100
+	if limit > 100 {
+		limit = 100
+	}
 
 	remoteTokens, err := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, "", limit)
 	if err != nil {

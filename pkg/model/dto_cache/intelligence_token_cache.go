@@ -2,6 +2,7 @@ package dto_cache
 
 import (
 	"back_ai_gun_data/pkg/model/dto"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -30,6 +31,37 @@ type CustomTime struct {
 }
 
 func (ct *CustomTime) UnmarshalJSON(b []byte) error {
+	// 首先尝试解析嵌套的JSON时间格式
+	var timeObj struct {
+		Date struct {
+			Year  int `json:"year"`
+			Month int `json:"month"`
+			Day   int `json:"day"`
+		} `json:"date"`
+		Time struct {
+			Hour   int `json:"hour"`
+			Minute int `json:"minute"`
+			Second int `json:"second"`
+			Nano   int `json:"nano"`
+		} `json:"time"`
+	}
+
+	if err := json.Unmarshal(b, &timeObj); err == nil {
+		// 成功解析嵌套格式，构造时间
+		ct.Time = time.Date(
+			timeObj.Date.Year,
+			time.Month(timeObj.Date.Month),
+			timeObj.Date.Day,
+			timeObj.Time.Hour,
+			timeObj.Time.Minute,
+			timeObj.Time.Second,
+			timeObj.Time.Nano,
+			time.UTC,
+		)
+		return nil
+	}
+
+	// 如果不是嵌套格式，尝试解析标准时间字符串
 	timeStr := strings.Trim(string(b), `"`)
 
 	formats := []string{
@@ -43,7 +75,6 @@ func (ct *CustomTime) UnmarshalJSON(b []byte) error {
 		if err != nil {
 			continue
 		}
-
 		ct.Time = t
 		return nil
 	}

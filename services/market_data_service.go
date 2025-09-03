@@ -57,6 +57,10 @@ func UpdateMarketData(ctx context.Context, intelligenceID string) error {
 	if limit < 10 {
 		limit = 10 // 最少10个
 	}
+	// 确保 limit 不超过 API 限制 100
+	if limit > 100 {
+		limit = 100
+	}
 
 	// 直接调用上游接口，不指定链
 	remoteTokens, err := remote_service.QueryTokensByNameWithLimit(ctx, namesStr, "", limit)
