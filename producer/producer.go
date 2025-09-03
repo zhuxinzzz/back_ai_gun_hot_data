@@ -25,7 +25,7 @@ func Connect() error {
 	}
 
 	var err error
-	conn, err = amqp.Dial(getEnv("RABBITMQ_URL", consts.DEFAULT_RABBITMQ_URL))
+	conn, err = amqp.Dial(getEnv("RABBITMQ_PRODUCER_URL", consts.DEFAULT_RABBITMQ_URL))
 	if err != nil {
 		lr.E().Error(err)
 		return err
