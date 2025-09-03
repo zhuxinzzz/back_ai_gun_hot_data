@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
 const (
@@ -92,7 +94,7 @@ func ReadTokenCache(ctx context.Context, intelligenceID string) ([]dto_cache.Int
 
 	// 直接解析为币数组
 	var coins []dto_cache.IntelligenceToken
-	if err := json.Unmarshal([]byte(dataStr), &coins); err != nil {
+	if err := jsoniter.Unmarshal([]byte(dataStr), &coins); err != nil {
 		lr.E().Error(err)
 		return nil, err
 	}

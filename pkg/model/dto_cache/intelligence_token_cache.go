@@ -181,7 +181,7 @@ func (c *IntelligenceToken) FindMatchingToken(remoteTokens []remote.GmGnToken) *
 
 func (c *IntelligenceToken) ToShowedToken() dto.ShowedToken {
 	return dto.ShowedToken{
-		Slug:             c.Name,
+		Slug:             c.Chain.Slug,
 		ContractAddress:  c.ContractAddress,
 		WarningPriceUSD:  c.Stats.WarningPriceUSD,
 		WarningMarketCap: c.Stats.WarningMarketCap,

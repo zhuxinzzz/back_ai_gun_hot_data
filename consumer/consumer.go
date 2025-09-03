@@ -84,7 +84,7 @@ func startConsumer(ctx context.Context, queueName, consumerTag string) error {
 		return fmt.Errorf("consume failed: %w", err)
 	}
 
-	//lr.I().Infof("Consumer started, listening on queue: %s with tag: %s", queueName, fullConsumerTag)
+	lr.I().Infof("Consumer started, listening on queue: %s with tag: %s", queueName, fullConsumerTag)
 
 	var semaphore = make(chan struct{}, getEnvInt("MAX_CONCURRENT", consts.DEFAULT_MAX_CONCURRENT))
 

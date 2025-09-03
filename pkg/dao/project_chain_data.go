@@ -114,6 +114,46 @@ func GetProjectChainDataByNamesAndAddresses(names []string, addresses []string) 
 	return resultList, nil
 }
 
+// GetUnfollowedProjectChainData 获取未关注的项目链数据（is_follow为false或不存在）
+func GetUnfollowedProjectChainData(names []string, addresses []string) ([]*dto.ProjectChainData, error) {
+	if len(names) == 0 && len(addresses) == 0 {
+		return []*dto.ProjectChainData{}, nil
+	}
+
+	var dataList []dto.ProjectChainData
+	query := GetDB().Where("is_deleted = false AND (is_follow = false OR is_follow IS NULL)")
+
+	// 添加币名模糊匹配条件
+	if len(names) > 0 {
+		var nameConditions []string
+		var nameArgs []interface{}
+		for _, name := range names {
+			nameConditions = append(nameConditions, "name ILIKE ?")
+			nameArgs = append(nameArgs, "%"+name+"%")
+		}
+		query = query.Where("("+strings.Join(nameConditions, " OR ")+")", nameArgs...)
+	}
+
+	// 添加地址精确匹配条件
+	if len(addresses) > 0 {
+		query = query.Where("contract_address IN ?", addresses)
+	}
+
+	result := query.Find(&dataList)
+	if result.Error != nil {
+		lr.E().Errorf("Failed to get unfollowed project chain data by names: %v, addresses: %v, error: %v", names, addresses, result.Error)
+		return nil, result.Error
+	}
+
+	// 转换为指针切片
+	resultList := make([]*dto.ProjectChainData, len(dataList))
+	for i := range dataList {
+		resultList[i] = &dataList[i]
+	}
+
+	return resultList, nil
+}
+
 func CreateProjectChainData(data *dto.ProjectChainData) error {
 	result := pgDB.Create(data)
 	if result.Error != nil {

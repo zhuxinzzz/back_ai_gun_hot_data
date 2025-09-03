@@ -27,4 +27,5 @@ type ProjectChainData struct {
 	MarketCap24Hours     *float64  `json:"market_cap_24_hours" gorm:"column:market_cap;type:float8"`
 	Price24Hours         *float64  `json:"price_24_hours" gorm:"column:price_usd;type:float8"`
 	Description          string    `gorm:"column:description;type:text" json:"description"`
+	IsFollow             bool      `json:"is_follow" gorm:"column:is_follow;type:boolean;default:false;not null"`
 }

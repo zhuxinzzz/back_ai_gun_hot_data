@@ -98,14 +98,15 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 	oldTokens := cacheTokens
 
 	var newTokens []remote.GmGnToken
+
 	if len(searchNames) > 0 {
+		cacheTokenMap := make(map[string]dto_cache.IntelligenceToken)
+		for _, t := range cacheTokens {
+			cacheTokenMap[t.GetUniqueKey()] = t
+		}
+
 		remoteTokens, qErr := queryTokensByName(ctx, searchNames)
 		if qErr == nil {
-			cacheTokenMap := make(map[string]dto_cache.IntelligenceToken)
-			for _, t := range cacheTokens {
-				cacheTokenMap[t.GetUniqueKey()] = t
-			}
-
 			searchResultsByName := make(map[string][]remote.GmGnToken)
 			for _, t := range remoteTokens {
 				if t.IsSupportedChain() {
@@ -118,20 +119,21 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 					// 检查是否为新币
 					if _, exists := cacheTokenMap[token.GetUniqueKey()]; !exists {
 						newTokens = append(newTokens, token)
-
-						// 新币入库到project_chain_data表
-						//if err := saveNewTokenToProjectChainData(ctx, token); err != nil {
-						//	lr.E().Errorf("Failed to save new token to project_chain_data: %v", err)
-						// 入库失败不影响后续流程，继续处理
-						//}
 					}
 				}
 			}
 
 			if len(newTokens) > 0 {
-				producer.SendNewTokensMessageAsync(ctx, newTokens)
-			}
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							lr.E().Errorf("Panic in checkAndSendTokens: %v", r)
+						}
+					}()
 
+					checkAndSendTokens(ctx, newTokens)
+				}()
+			}
 		} else {
 			lr.E().Error(qErr)
 			return qErr
@@ -532,36 +534,36 @@ func convertProjectChainDataToCacheTokens(dtoTokens []*dto.ProjectChainData) []d
 	return cacheTokens
 }
 
-func saveNewTokenToProjectChainData(ctx context.Context, token remote.GmGnToken) error {
-	chainID, err := dao.GetChainIDBySlug(token.Network)
-	if err != nil {
-		lr.E().Error()
-		return err
-	}
-	if chainID == "" {
-		return fmt.Errorf("chain not found for network %s", token.Network)
-	}
-
-	existingData, err := dao.GetProjectChainDataByChainIDAndContractAddress(chainID, token.Address)
-	if err != nil {
-		lr.E().Error()
-		return err
-	}
-	if existingData != nil {
-		//lr.I().Infof("Token already exists in project_chain_data: name=%s, address=%s, chain=%s",
-		//	token.Name, token.Address, token.Network)
-		return nil
-	}
-
-	projectChainData := token.ToProjectChainData(chainID)
-
-	if err := dao.CreateProjectChainData(projectChainData); err != nil {
-		lr.E().Error(err)
-		return err
-	}
-
-	return nil
-}
+//func saveNewTokenToProjectChainData(ctx context.Context, token remote.GmGnToken) error {
+//	chainID, err := dao.GetChainIDBySlug(token.Network)
+//	if err != nil {
+//		lr.E().Error()
+//		return err
+//	}
+//	if chainID == "" {
+//		return fmt.Errorf("chain not found for network %s", token.Network)
+//	}
+//
+//	existingData, err := dao.GetProjectChainDataByChainIDAndContractAddress(chainID, token.Address)
+//	if err != nil {
+//		lr.E().Error()
+//		return err
+//	}
+//	if existingData != nil {
+//		//lr.I().Infof("Token already exists in project_chain_data: name=%s, address=%s, chain=%s",
+//		//	token.Name, token.Address, token.Network)
+//		return nil
+//	}
+//
+//	projectChainData := token.ToProjectChainData(chainID)
+//
+//	if err := dao.CreateProjectChainData(projectChainData); err != nil {
+//		lr.E().Error(err)
+//		return err
+//	}
+//
+//	return nil
+//}
 
 func deduplicateTokensAgainstExisting(tokens []dto_cache.IntelligenceToken, existingTokens []dto_cache.IntelligenceToken) []dto_cache.IntelligenceToken {
 	if len(tokens) == 0 {
@@ -601,4 +603,53 @@ func deduplicateTokensAgainstExisting(tokens []dto_cache.IntelligenceToken, exis
 	}
 
 	return result
+}
+
+// checkAndSendTokens 异步检查关注状态并发送消息
+func checkAndSendTokens(ctx context.Context, tokens []remote.GmGnToken) {
+	if len(tokens) == 0 {
+		return
+	}
+
+	// 提取币名和地址用于查询
+	searchNames := make([]string, 0, len(tokens))
+	searchAddresses := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if token.Name != "" {
+			searchNames = append(searchNames, token.Name)
+		}
+		if token.Address != "" {
+			searchAddresses = append(searchAddresses, token.Address)
+		}
+	}
+
+	// 获取未关注的项目链数据（is_follow为false或不存在）
+	unfollowedTokens, err := dao.GetUnfollowedProjectChainData(searchNames, searchAddresses)
+	if err != nil {
+		lr.E().Errorf("Failed to get unfollowed project chain data: %v", err)
+		return
+	}
+
+	// 过滤出需要发送的币
+	var tokensToSend []remote.GmGnToken
+	for _, token := range tokens {
+		// 检查是否在未关注列表中
+		isUnfollowed := false
+		for _, unfollowed := range unfollowedTokens {
+			if unfollowed.ContractAddress == token.Address {
+				isUnfollowed = true
+				break
+			}
+		}
+
+		if isUnfollowed {
+			tokensToSend = append(tokensToSend, token)
+		}
+	}
+
+	// 发送消息
+	if len(tokensToSend) > 0 {
+		producer.SendNewTokensMessageAsync(ctx, tokensToSend)
+		lr.I().Infof("Sent %d unfollowed tokens out of %d total new tokens", len(tokensToSend), len(tokens))
+	}
 }
