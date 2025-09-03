@@ -8,6 +8,9 @@ const (
 	// AI分析实体同步币信息队列
 	QUEUE_ETL_ENTITY_DATA = "etl-entity-data"
 
+	// AI Token队列 - 新币入库后发送到ETL服务
+	QUEUE_AI_TOKEN = "ai_token_queue"
+
 	// RabbitMQ连接配置
 	DEFAULT_RABBITMQ_URL = "amqp://guest:guest@localhost:5672/"
 

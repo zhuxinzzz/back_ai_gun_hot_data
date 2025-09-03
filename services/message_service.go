@@ -7,6 +7,7 @@ import (
 	"back_ai_gun_data/pkg/model/dto"
 	"back_ai_gun_data/pkg/model/dto_cache"
 	"back_ai_gun_data/pkg/model/remote"
+	"back_ai_gun_data/producer"
 	"back_ai_gun_data/services/remote_service"
 	"context"
 	"fmt"
@@ -124,6 +125,12 @@ func executeDetectionAndProcessing(ctx context.Context, intelligenceID string, s
 							// 入库失败不影响后续流程，继续处理
 						}
 					}
+				}
+			}
+
+			if len(newTokens) > 0 {
+				if err := producer.SendNewTokensMessage(ctx, newTokens); err != nil {
+					lr.E().Errorf("Failed to send new tokens to message queue: %v", err)
 				}
 			}
 		} else {
